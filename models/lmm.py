@@ -116,7 +116,6 @@ class LMM:
       Zs[key] = sps.csc_matrix(Z[:, partitions2[i]:partitions2[i+1]])
       ZoZ[key] = sps.csc_matrix(sps.kron(Zs[key], Zs[key]))
     
-    #Need to redo this section for multiple random effects
     deriv_mats = OrderedDict()
     for key in var_struct.keys():
       Sv_shape, Av = var_struct[key]
@@ -159,12 +158,8 @@ class LMM:
     ------------
     theta: array
       Vector containing relavent model terms
-    
-    
-    Comments
-    -----------
-    Function will to be split up for efficiency
     '''
+    #May need to split up for effeciency
     if theta is None:
       theta=self.theta
     partitions=self.partitions
