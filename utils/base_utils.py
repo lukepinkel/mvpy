@@ -77,7 +77,7 @@ def csd(X):
     '''
     return standardize(center(X))
 
-def cov(X, Y=None, bias_corrected=True):
+def cov(X, Y=None, bias_corrected=False):
     '''
     Covariance
     
