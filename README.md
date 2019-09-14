@@ -13,5 +13,6 @@ Currently includes rough implementations of
   - Partial least squares structural equation modeling
   - Canonical correlation
 - Structural equation modeling
-- Simple linear model
+- Simple linear models
+
 Although all of these have been tested against results published in the literature, or those obtained in R, they have not been tested systematically, and some of the code is very rough.
