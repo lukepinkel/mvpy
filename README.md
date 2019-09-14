@@ -1,6 +1,6 @@
 # mvpy
 Currently includes rough implementations of 
-- Cumulative link models for ordinal regression
+- Cumulative link models for ordinal regression.  
 - Factor analytic methods
   - Confirmatory factor analysis
   - Exploratory factor analysis
@@ -16,3 +16,6 @@ Currently includes rough implementations of
 - Simple linear models
 
 Although all of these have been tested against results published in the literature, or those obtained in R, they have not been tested systematically, and some of the code is very rough.
+
+The cumulative link model is planned to be subsumed by a GLM module, while the factor analytic methods, latent variable correlation methods, and structural equation models are planned to be implemented under a general latent variable model.  
+
