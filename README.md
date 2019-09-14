@@ -6,7 +6,7 @@ Currently includes implementations of
   - Exploratory factor analysis
   - Factor rotation
 - Linear mixed models capable of handling multivariate models
-- Latent variable correlations 
+- Latent variable correlations for handling polychorric, polytomous and tetrachoric correlation
 - Partial least squares (soft modeling) techniques
   - Partial least squares covariance
   - Partial least squares regression
