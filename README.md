@@ -1,5 +1,5 @@
 # mvpy
-Currently includes implementations of 
+Currently includes rough implementations of 
 - Cumulative link models for ordinal regression
 - Factor analytic methods
   - Confirmatory factor analysis
@@ -14,3 +14,4 @@ Currently includes implementations of
   - Canonical correlation
 - Structural equation modeling
 - Simple linear model
+Although all of these have been tested against results published in the literature, or those obtained in R, they have not been tested systematically, and some of the code is very rough.
