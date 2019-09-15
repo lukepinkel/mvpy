@@ -102,7 +102,7 @@ class LMM:
     partitions = [0]+[re_struct[key]['n_params'] for key in re_struct.keys()]
     partitions += [len(error_struct['params'])]
     theta = np.concatenate([var_params, err_params])
-    partitions2 = [0]+[re_struct[key]['n_units']*re_struct[key]['n_level_effects'] for key in re_struct.keys()]
+    partitions2 = [0]+[re_struct[key]['n_units']*re_struct[key]['cov_re_dims'] for key in re_struct.keys()]
     partitions2 = np.cumsum(partitions2)
     var_struct = OrderedDict()
     for key in re_struct.keys():
@@ -116,6 +116,7 @@ class LMM:
       Zs[key] = sps.csc_matrix(Z[:, partitions2[i]:partitions2[i+1]])
       ZoZ[key] = sps.csc_matrix(sps.kron(Zs[key], Zs[key]))
     
+    #Need to redo this section for multiple random effects
     deriv_mats = OrderedDict()
     for key in var_struct.keys():
       Sv_shape, Av = var_struct[key]
@@ -149,6 +150,8 @@ class LMM:
     self.A = np.block([[X, Z], [zeros((Z.shape[1], X.shape[1])),
                         eye(Z.shape[1])]])
   
+    
+    
     
     
   def params2mats(self, theta=None):
