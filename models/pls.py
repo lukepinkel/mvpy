@@ -214,9 +214,9 @@ def simpls(X, Y, ncomps):
         eigvals, eigvecs = sorted_eigh(dot(S.T, S))
         r = dot(S, eigvecs[:, [0]])
         t = dot(X, r)
-        t = t - np.mean(t)
-        r = r / norm(t)
-        t = t / norm(t)
+        t -= np.mean(t)
+        r /= norm(t)
+        t /= norm(t)
         p = dot(X.T, t)
         q = dot(Y.T, t)
         u = dot(Y, q)
@@ -224,8 +224,8 @@ def simpls(X, Y, ncomps):
         if i>1:
             v = v - multi_dot([V, V.T, p])
             u = u - multi_dot([T, T.T, u])
-        v = v / sqrt(dot(v.T, v))
-        S = S - multi_dot([v, v.T, S])
+        v /= sqrt(dot(v.T, v))
+        S -= multi_dot([v, v.T, S])
         
         R[:, i] = r[:, 0]
         T[:, i] = t[:, 0]
@@ -234,12 +234,12 @@ def simpls(X, Y, ncomps):
         U[:, i] = u[:, 0]
         V[:, i] = v[:, 0]
         
-    B = dot(R, Q.T)
-    U = U/sqrt(norm(U, axis=0))
-    Q = Q/norm(Q, axis=0)
+    B  = dot(R, Q.T)
+    U /= sqrt(norm(U, axis=0))
+    Q /= norm(Q, axis=0)
     Vp = norm(P, axis=0)
-    P = P/Vp
-    T = T*Vp
+    P /= Vp
+    T *= Vp
     return T, P, U, Q, R, V, B
 
 
