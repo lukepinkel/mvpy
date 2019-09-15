@@ -10,9 +10,12 @@ Currently includes rough implementations of
 - Partial least squares (soft modeling) techniques
   - Partial least squares covariance
   - Partial least squares regression
+    - SIMPLS
+    - NIPALS
+    - Wolds two block mode A (W2A)
   - Partial least squares structural equation modeling
   - Canonical correlation
-- Structural equation modeling
+- Structural equation modeling (ML)
 - Simple linear models
 
 Although all of these have been tested against results published in the literature, or those obtained in R, they have not been tested systematically, and some of the code is very rough.
