@@ -327,7 +327,7 @@ class SEMModel:
         self.test_pval = 1.0 - chi2_dist.cdf(self.test_stat, self.df)
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
         self.res['p'] = 1 - t_dist.cdf(abs(self.res['t']), self.n_obs)
-        self.res['adj p'] = fdr_bh(self.res['p'])
+        #self.res['adj p'] = fdr_bh(self.res['p'])
         p  = self.S.shape[0]
         normalized_resids = 0.0
         SMSR = 0.0
