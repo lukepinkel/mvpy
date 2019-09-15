@@ -14,6 +14,9 @@ from scipy.linalg import block_diag
 from scipy.optimize import minimize
 from mvpy.api import LMM
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 def initialize_lmm(n_units=50, n_unit_obs=5, n_levels=2, n_level_effects=2):
     Sv = vine_corr(n_levels*n_level_effects, 2)
     Se = vine_corr(n_levels, 2)
@@ -86,15 +89,22 @@ df = pd.concat([df1, df2], axis=0)
     
 
 
-import seaborn as sns
+
+fig, ax = plt.subplots()
 sns.violinplot(x='c', y=0, data=df1)
 sns.violinplot(x='c', y=0, data=df2)
 sns.set_style('darkgrid')
 
+
+fig, ax = plt.subplots()
 sns.violinplot(x='c', y=0, hue='method', data=df, cut=0)
+
+fig, ax = plt.subplots()
 g = sns.pointplot(x='c', y=0, hue='method', data=df, join=False,
               dodge=0.2, capsize=.1, estimator=np.median)
 g.axhline(0)
+
+fig, ax = plt.subplots()
 sns.boxplot(x='c', y=0, hue='method', data=df)
 
 means = df.groupby(['c', 'method']).agg(['mean', 'median', 'std', 'skew', 'size'])
