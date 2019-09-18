@@ -517,6 +517,7 @@ class CFA:
 
 
 
+
 class FactorAnalysis:
     
     def __init__(self, X, nfacs=None, orthogonal=True, unit_var=True):
@@ -562,7 +563,7 @@ class FactorAnalysis:
         params[self.idx] = free
         S = self.S
         Lambda, Phi, Psi = self.p2m(params)
-        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi**2
         return slogdet(Sigma)[1]+trace(dot(pinv(Sigma), S))
     
     
@@ -571,13 +572,13 @@ class FactorAnalysis:
         params[self.idx] = free
         S = self.S
         Lambda, Phi, Psi = self.p2m(params)
-        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi**2
         V = pinv(Sigma)
         R = Sigma - S
         VRV = V.dot(R).dot(V)
         g = np.block([2*vec(mdot([VRV, Lambda, Phi])),
                       vech(mdot([Lambda.T, VRV, Lambda])),
-                      vech(VRV)])
+                      2*vech(VRV.dot(Psi))])
         return g[self.idx]
         
     
@@ -586,15 +587,15 @@ class FactorAnalysis:
         params[self.idx] = free
         S = self.S
         Lambda, Phi, Psi = self.p2m(params)
-        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi**2
         V = pinv(Sigma)
         Np = nmat(self.p)
         Ip = eye(self.p)
-        Ip2 = eye(self.p*self.p)
+        #Ip2 = eye(self.p*self.p)
         Dp = dmat(self.p)
         J = np.block([2 * Dp.T.dot(Np.dot(kron(dot(Lambda, Phi), Ip))),
                       pre_post_elim(kron(Lambda, Lambda)),
-                      pre_post_elim(Ip2)])
+                      2*pre_post_elim(Np.dot(kron(Psi, Ip)))])
         Q0 = kron(mdot([V, (S - Sigma), V]), V)
         Q1 = kron(V, mdot([V, S, V]))
         Q = pre_post_elim(Q0 + Q1)
@@ -607,15 +608,15 @@ class FactorAnalysis:
         params[self.idx] = free
         S = self.S
         Lambda, Phi, Psi = self.p2m(params)
-        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi**2
         V = pinv(Sigma)
         Np = nmat(self.p)
         Ip = eye(self.p)
-        Ip2 = eye(self.p*self.p)
+        #Ip2 = eye(self.p*self.p)
         Dp = dmat(self.p)
         J = np.block([2 * Dp.T.dot(Np.dot(kron(dot(Lambda, Phi), Ip))),
                       pre_post_elim(kron(Lambda, Lambda)),
-                      pre_post_elim(Ip2)])
+                      2*pre_post_elim(Np.dot(kron(Psi, Ip)))])
         Q0 = kron(mdot([V, (S - Sigma), V]), V)
         Q1 = kron(V, mdot([V, S, V]))
 
@@ -632,7 +633,7 @@ class FactorAnalysis:
         self.params[self.idx] = self.free
         self.Lambda, self.Phi, self.Psi = self.p2m(self.params)
         
-        self.Sigma = mdot([self.Lambda, self.Phi, self.Lambda.T]) + self.Psi
+        self.Sigma = mdot([self.Lambda, self.Phi, self.Lambda.T]) + self.Psi**2
         self.SE =  diag(pinv(self.n*self.hessian(self.free)))**0.5
         self.optimizer = optimizer
         self.res = np.block([self.free[:, None], 
@@ -644,7 +645,7 @@ class FactorAnalysis:
         t = (self.p + 1.0) * self.p
         self.df = t  - np.sum(self.idx)
         self.GFI = 1.0 - trace(dot(tmp2, tmp2)) / trace(dot(tmp1, tmp1))
-        self.AGFI = 1. - (t / (2.0*self.df)) * (1-self.GFI)
+        #self.AGFI = 1. - (t / (2.0*self.df)) * (1-self.GFI)
         self.stdchi2 = (self.chi2 - self.df) /  sqrt(2*self.df)
         self.RMSEA = sqrt(np.maximum(self.chi2-self.df, 0)/(self.df*(self.n-1)))
         '''
@@ -654,4 +655,6 @@ class FactorAnalysis:
                 SRMR += (self.Sigma[i, j]-self.S[i, j])**2/(self.S[i, i]*self.S[j, j])
         self.SRMR = sqrt((2.0 / (t)) * SRMR)
         '''
+
+
 
