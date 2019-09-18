@@ -29,4 +29,4 @@ Lambda_h = model.Lambda
 Phi_h = model.Phi
 Psi_h = model.Psi
 
-np.diag(Phi_h)
+np.diag(Psi_h**2) - np.diag(Psi)
