@@ -11,14 +11,15 @@ import pandas as pd
 from numpy import diag, sqrt, dot, kron, log, trace, eye, ones
 
 from scipy.stats import chi2 as chi2_dist
-from numpy.linalg import pinv, eig, norm, det, inv
+from scipy.optimize import minimize
+from numpy.linalg import pinv, eig, norm, det, inv, eigh, slogdet
 from statsmodels.iolib.table import SimpleTable
 
 from ..utils.base_utils import corr, cov, check_type
 from ..utils.linalg_utils import (sorted_eig, mdot, near_psd, diag2, 
                             replace_diagonal, pre_post_elim, dmat, nmat,
                             invec, invech, multi_corr, rotate, sorted_eigh, 
-                            normalize_diag)
+                            normalize_diag, jmat, vec, vech)
 
 class EFA:
     
@@ -515,4 +516,142 @@ class CFA:
     
 
 
+
+class FactorAnalysis:
+    
+    def __init__(self, X, nfacs=None, orthogonal=True, unit_var=True):
+        if nfacs is None:
+            nfacs = X.shape[1]
+        self.X, self.xcols, self.xix, self.is_pd = check_type(X)
+        self.S = cov(X)
+        U, self.V = eigh(self.S)
+        self.U = diag(U)
+        self.n, self.p = X.shape
+        self.q = nfacs
+        
+        self.Lambda = self.V[:, :nfacs]
+        if orthogonal is True:
+            self.Phi = eye(self.q)
+        else:
+            self.Phi = eye(self.q) + jmat(self.q, self.q) / 20.0 - eye(self.q)/20.0
+        self.Psi = eye(self.p)
+        if unit_var is True:
+            Phi = self.Phi.copy() * 0.0
+        else:
+            Phi = self.Phi.copy()
+        self.params = np.block([vec(self.Lambda), vech(self.Phi), 
+                                vech(self.Psi)])
+        self.idx =  np.block([vec(self.Lambda), vech(Phi), 
+                                vech(self.Psi)]) !=0
+        bounds = [(None, None) for i in range(self.p*self.q)]
+        bounds+= [(0, None) if x==1 else (None, None) for x in vech(eye(self.q))]
+        bounds+= [(0, None) if x==1 else (None, None) for x in vech(eye(self.p))]
+        bounds =  np.array(bounds)[self.idx]
+        bounds = [tuple(x) for x in bounds.tolist()]
+        self.bounds = bounds
+        self.free = self.params[self.idx]
+        
+    def p2m(self, params):
+        Lambda = invec(params[:self.p*self.q], self.p, self.q)
+        Phi = invech(params[self.p*self.q:self.p*self.q+(self.q+1)*self.q/2])
+        Psi = invech(params[self.p*self.q+(self.q+1)*self.q/2:])
+        return Lambda, Phi, Psi
+    
+    def loglike(self, free):
+        params = self.params.copy()
+        params[self.idx] = free
+        S = self.S
+        Lambda, Phi, Psi = self.p2m(params)
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        return slogdet(Sigma)[1]+trace(dot(pinv(Sigma), S))
+    
+    
+    def gradient(self, free):
+        params = self.params.copy()
+        params[self.idx] = free
+        S = self.S
+        Lambda, Phi, Psi = self.p2m(params)
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        V = pinv(Sigma)
+        R = Sigma - S
+        VRV = V.dot(R).dot(V)
+        g = np.block([2*vec(mdot([VRV, Lambda, Phi])),
+                      vech(mdot([Lambda.T, VRV, Lambda])),
+                      vech(VRV)])
+        return g[self.idx]
+        
+    
+    def hessian(self, free):
+        params = self.params.copy()
+        params[self.idx] = free
+        S = self.S
+        Lambda, Phi, Psi = self.p2m(params)
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        V = pinv(Sigma)
+        Np = nmat(self.p)
+        Ip = eye(self.p)
+        Ip2 = eye(self.p*self.p)
+        Dp = dmat(self.p)
+        J = np.block([2 * Dp.T.dot(Np.dot(kron(dot(Lambda, Phi), Ip))),
+                      pre_post_elim(kron(Lambda, Lambda)),
+                      pre_post_elim(Ip2)])
+        Q0 = kron(mdot([V, (S - Sigma), V]), V)
+        Q1 = kron(V, mdot([V, S, V]))
+        Q = pre_post_elim(Q0 + Q1)
+        H = mdot([J.T, Q, J])
+        H = H[self.idx][:, self.idx]
+        return H
+    
+    def dsigma(self, free):
+        params = self.params.copy()
+        params[self.idx] = free
+        S = self.S
+        Lambda, Phi, Psi = self.p2m(params)
+        Sigma = mdot([Lambda, Phi, Lambda.T]) + Psi
+        V = pinv(Sigma)
+        Np = nmat(self.p)
+        Ip = eye(self.p)
+        Ip2 = eye(self.p*self.p)
+        Dp = dmat(self.p)
+        J = np.block([2 * Dp.T.dot(Np.dot(kron(dot(Lambda, Phi), Ip))),
+                      pre_post_elim(kron(Lambda, Lambda)),
+                      pre_post_elim(Ip2)])
+        Q0 = kron(mdot([V, (S - Sigma), V]), V)
+        Q1 = kron(V, mdot([V, S, V]))
+
+        return J, pre_post_elim(Q0 + Q1)
+    
+    def fit(self, verbose=2, n_iters=2000, gtol=1e-8, xtol=1e-9):
+        optimizer = minimize(self.loglike, self.free, jac=self.gradient,
+                     hess=self.hessian, bounds=self.bounds,
+                     method='trust-constr', options={'verbose':verbose, 
+                                                     'maxiter':n_iters,
+                                                     'gtol':gtol, 
+                                                     'xtol':xtol})
+        self.free = optimizer.x
+        self.params[self.idx] = self.free
+        self.Lambda, self.Phi, self.Psi = self.p2m(self.params)
+        
+        self.Sigma = mdot([self.Lambda, self.Phi, self.Lambda.T]) + self.Psi
+        self.SE =  diag(pinv(self.n*self.hessian(self.free)))**0.5
+        self.optimizer = optimizer
+        self.res = np.block([self.free[:, None], 
+                             self.SE[:, None], (self.free/self.SE)[:, None]])
+        self.chi2 = slogdet(self.Sigma)[1] + trace(dot(pinv(self.Sigma), 
+                            self.S)) - self.p - slogdet(self.S)[1]
+        tmp1 = pinv(self.Sigma).dot(self.S)
+        tmp2 = tmp1 - eye(self.p)
+        t = (self.p + 1.0) * self.p
+        self.df = t  - np.sum(self.idx)
+        self.GFI = 1.0 - trace(dot(tmp2, tmp2)) / trace(dot(tmp1, tmp1))
+        self.AGFI = 1. - (t / (2.0*self.df)) * (1-self.GFI)
+        self.stdchi2 = (self.chi2 - self.df) /  sqrt(2*self.df)
+        self.RMSEA = sqrt(np.maximum(self.chi2-self.df, 0)/(self.df*(self.n-1)))
+        '''
+        SRMR = 0.0
+        for i in range(self.p):
+            for j in range(i):
+                SRMR += (self.Sigma[i, j]-self.S[i, j])**2/(self.S[i, i]*self.S[j, j])
+        self.SRMR = sqrt((2.0 / (t)) * SRMR)
+        '''
 
