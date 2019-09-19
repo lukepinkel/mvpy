@@ -30,6 +30,7 @@ from mvpy.models.factor_analysis import EFA, CFA
 from mvpy.models.lmm import LMM
 from mvpy.models.lvcorr import Polychor, polyserial, tetra
 from mvpy.models.simple_lm import LM
+from mvpy.models.glm import Logistic
 
 
 
