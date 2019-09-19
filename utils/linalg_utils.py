@@ -292,9 +292,21 @@ def spsweep(X, partition):
     X12 = sps.csc_matrix(Ainv.dot(B))
     Xswp = sps.bmat([[Ainv, X12], [-X12.T, D - B.T.dot(X12)]])
     return Xswp
-        
-    
-    
+
+
+
+def qcov(X, Y=None): 
+    if np.isnan(X).any():
+        X = np.ma.masked_invalid(X) 
+    if Y is None:
+        S = np.cov(X, rowvar=False)
+    elif Y is not None:
+        if np.isnan(Y).any():
+            Y = np.ma.masked_invalid(Y)
+        S = np.cov(X, Y, rowvar=False)[X.shape[1]:, :Y.shape[1]]
+    return S
+     
+  
           
 def kronvec_mat(A_dims, B_dims, sparse=False):
   '''
