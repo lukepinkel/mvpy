@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 from numpy import exp, ones, dot, diag
-from numpy.linalg import inv
+from patsy import dmatrices
 from scipy.optimize import minimize
 from ..utils.linalg_utils import einv, _check_1d, mdot
 from ..utils.base_utils import check_type
@@ -18,7 +18,8 @@ from ..utils.statfunc_utils import norm_qtf
 
 class CLM:
     
-    def __init__(self, X, Y):
+    def __init__(self, frm, data, X=None, Y=None):
+        Y, X = dmatrices(frm, data, return_type='dataframe')
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
         self.Y, self.ycols, self.yix, self.y_is_p = check_type(Y)
         self.Y = _check_1d(self.Y)
@@ -100,22 +101,33 @@ class CLM:
         H=mdot([B1.T, Phi_21, B1])-mdot([B2.T, Phi_22, B2])-mdot([dPi, Phi3, dPi.T])
         return -H
     
-    def fit(self, verbose=2):
+    def fit(self, verbose=2, optim='double', lqp_kws={}, trust_kws={}, 
+            trust_opts={}):
+        
         theta = norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
         beta = ones(self.X.shape[1])
         params = np.concatenate([theta, beta], axis=0)
         self.theta_init = theta
+        
         #A little overkill
         res = minimize(self.loglike, params, constraints=self.constraints,
-                       method='SLSQP')
-
-        res = minimize(self.loglike, res.x, constraints=self.constraints,
-                       jac=self.gradient, hess=self.hessian, method='trust-constr', 
-                       options={'verbose':verbose})
+                       method='SLSQP', **lqp_kws)
+        
+        if optim.lower() in ['double', 'dual', '2']:
+            
+            options = {'verbose':verbose}
+            for x in trust_opts.keys():
+                options[x] = trust_opts[x]
+                
+            res = minimize(self.loglike, res.x, constraints=self.constraints,
+                           jac=self.gradient, hess=self.hessian,
+                           method='trust-constr', options=options,
+                           **trust_kws)
+            
         self.params = res.x
         self.optimizer = res
         self.H = self.hessian(self.params)
-        self.Vcov = inv(self.H)
+        self.Vcov = einv(self.H)
         self.SE = diag(self.Vcov)**0.5
         self.res = np.concatenate([self.params[:, None],
                                    self.SE[:, None]], axis=1)
