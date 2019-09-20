@@ -10,10 +10,10 @@ import numpy as np
 from numpy import log, exp
 from patsy import dmatrices
 
-
+from scipy.linalg import block_diag
 from scipy.optimize import minimize
 from scipy.stats import t as t_dist, chi2 as chi2_dist
-
+from scipy.special import gammaln, digamma, polygamma
 from ..utils.base_utils import check_type
 from ...utils.linalg_utils import einv, _check_1d, _check_0d
 
@@ -195,8 +195,9 @@ class GLM:
         '''
         examples:
             
+        data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv")
         frm="num_awards ~ C(prog) + math"
-        model = GLM(frm=frm, data=data, family=PoissonGLM())
+        model = GLM(frm=frm, data=data, family='poisson')
         model.fit()
         
         import statsmodels.api as sm
@@ -204,12 +205,17 @@ class GLM:
         spector_data.exog = sm.add_constant(spector_data.exog)
         data = pd.concat([spector_data.endog, spector_data.exog], axis=1)
         frm = "GRADE ~ GPA+TUCE+PSI"
-        model = GLM(frm=frm, data=data, family=LogisticGLM())
+        model = GLM(frm=frm, data=data, family='binomial')
         model.fit()
         
         
         
         '''
+        if family.lower() in ['binomial', 'binom', 'logit', 'logistic', 'binary', 
+                      'bernoulli', 'bern']:
+            self.family = LogisticGLM()
+        elif family.lower() in ['poisson', 'pois', 'count']:
+            self.family = PoissonGLM()   
         if frm is not None:
             Y, X = dmatrices(frm, data, return_type='dataframe')
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
@@ -217,7 +223,6 @@ class GLM:
         self.n_obs, self.n_feats = self.X.shape
         self.dfe = self.n_obs - self.n_feats
         self.jn = np.ones((self.n_obs, 1))
-        self.family = family
         self.YtX = self.Y.T.dot(self.X)
         self.theta_init = np.ones(self.n_feats)/self.n_feats
         
@@ -325,11 +330,84 @@ class PoissonGLM:
         return d2b
 
 
+ '''   
+class NegBinomial:
     
-
-           
+    def __init__(self, frm=None, data=None, X=None, Y=None, type_=2):
+        '''
+        data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv")
+        frm="num_awards ~ C(prog) + math"
+        model = NegBinomial(frm=frm, data=data)
+        model.loglike(model.theta_init)
+        model.gradient(model.theta_init)
+        approx_fprime(model.theta_init, model.loglike, 1e-8)
+        res = minimize(model.loglike, model.theta_init, 
+                       jac=model.gradient, hess=model.hessian,
+                       method='trust-constr', options={'maxiter':5000})
         
+        '''
         
+        if frm is not None:
+            Y, X = dmatrices(frm, data, return_type='dataframe')
+        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
+        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
+        self.n_obs, self.n_feats = self.X.shape
+        self.dfe = self.n_obs - self.n_feats
+        self.jn = np.ones((self.n_obs, 1))
+        self.YtX = self.Y.T.dot(self.X)
+        poisson_model = GLM(frm, data, family='poisson')
+        poisson_model.fit()
+        theta_init = poisson_model.beta
+        theta_init = np.concatenate([theta_init, np.ones(1)])/2
+        self.theta_init = theta_init
+        self.nbp = 2-type_
+        
+    def loglike(self, theta):
+        X, Y, nbp = self.X, _check_1d(self.Y), self.nbp
+        kappa, beta = theta[-1], theta[:-1]
+        lmb = np.exp(X.dot(beta))
+        Z = kappa * lmb**nbp
+        M = kappa / (kappa + lmb)
+        L1 = gammaln(Y+Z) - gammaln(Z) - gammaln(1+Y)
+        L2 = Z.T.dot(log(M)) + Y.T.dot(log(1-M))
+        LL = np.sum(L1)+L2
+        return -LL
+    
+    def gradient(self, theta):
+        theta = _check_1d(theta)
+        X, Y, nbp = self.X, _check_1d(self.Y), self.nbp
+        kappa, beta = theta[-1], theta[:-1]
+        lmb = np.exp(X.dot(beta))
+        Z = kappa * lmb**nbp
+        W = Z / (Z + lmb)
+        gb = (kappa * ((Y - lmb) / (kappa + lmb))).T.dot(X)
+        dgdk = Z / kappa
+        dwdk = (1 / kappa) * W * (1 - W)
+        dk1 = (digamma(Y+Z) - digamma(Z) + np.log(W)).T.dot(dgdk)
+        dk2 = (Z / W - Y / (1 - W)).T.dot(dwdk)
+        gk = dk1+dk2
+        g = np.concatenate([gb, -np.array([gk])])
+        return -g
+    
+    def hessian(self, theta):
+        X, Y, n = self.X, _check_1d(self.Y), self.n_obs
+        kappa, beta = theta[-1], theta[:-1]
+        lmb = np.exp(X.dot(beta))
+        u = lmb * (kappa+Y)
+        v = (kappa + lmb)**2
+        Hb = kappa * X.T.dot(np.diag(-u/v)).dot(X)
+        Hbk = ((Y - lmb) * (kappa / (kappa + lmb))).T.dot(X)
+        Hk1 = polygamma(1, Y+kappa) - (1 / (lmb+kappa))
+        Hk2 = n*(1/kappa+polygamma(1, kappa))
+        Hk = np.array([[Hk2]])+np.sum(Hk1)
+        H = np.block([[Hb, Hbk[:, None]], [Hbk[:, None].T, Hk]])
+        return -H
+        
+    
+    
+    
+        
+   '''     
         
 
 
