@@ -12,6 +12,7 @@ import pandas as pd
 from collections import OrderedDict
 from patsy import dmatrices
 from numpy.linalg import pinv
+from scipy.stats import t as t_dist
 from ..utils.linalg_utils import einv, _check_np, _check_1d, _check_2d
 
 class LM:
@@ -25,11 +26,13 @@ class LM:
         self.yhat = _check_np(X).dot(self.coefs)
         self.error_var = np.sum((_check_np(y) - self.yhat)**2, 
                                 axis=0)/(X.shape[0]-X.shape[1]-1)
-        self.coefs_se = np.diag(self.gram*self.error_var)
+        self.coefs_se = np.sqrt(np.diag(self.gram*self.error_var))
         self.ll = self.loglike(self.coefs, self.error_var)
         beta = np.concatenate([_check_2d(self.coefs), _check_2d(self.coefs_se)],
                                axis=1)
-        self.beta = pd.DataFrame(beta, index=self.X.columns)
+        self.res = pd.DataFrame(beta, index=self.X.columns, columns=['beta', 'SE'])
+        self.res['t'] = self.res['beta'] / self.res['SE']
+        self.res['p'] = t_dist.sf(abs(self.res['t']), X.shape[0]-X.shape[1])*2.0
         
     
     def lmss(self, X, y):
