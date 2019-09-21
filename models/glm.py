@@ -9,142 +9,86 @@ import pandas as pd
 import numpy as np
 from numpy import log, exp
 from patsy import dmatrices
-
+from collections import OrderedDict
+from numpy.linalg import pinv
 from scipy.linalg import block_diag
 from scipy.optimize import minimize
 from scipy.stats import t as t_dist, chi2 as chi2_dist
 from scipy.special import gammaln, digamma, polygamma
 from ..utils.base_utils import check_type
-from ...utils.linalg_utils import einv, _check_1d, _check_0d
+from ...utils.linalg_utils import (einv, _check_1d, _check_0d, _check_np,
+                                   _check_2d)
 
-'''
-class minimal_logistic:
-    
-    def __init__(self, X, Y):
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
-        self.dfe = self.X.shape[0] - self.X.shape[1]
-    def mean_func(self, X):
-        P = exp(X)
-        return P/(1.0+P)
-    
-    def mean_func_prime(self, X):
-        P = exp(X)
-        return P/((1.0+P)**2.0)
-    
-    def loglike(self, beta):
-        X, Y = self.X, self.Y
-        eta = self.mean_func(X.dot(beta))
-        a1, a2 = log(np.maximum(eta, 1e-16)), log(np.maximum(1.0-eta, 1e-16))
-        LL = Y.T.dot(a1) + (1.0 - Y).T.dot(a2)
-        return -_check_0d(LL)
-    
-    def gradient(self, beta):
-        X, Y = self.X, self.Y
-        eta = self.mean_func(X.dot(beta))
-        return -_check_1d(X.T.dot(_check_1d(Y)-eta))
-    
-    def hessian(self, beta):
-        X = self.X
-        W = np.diag(self.mean_func_prime(X.dot(beta)))
-        H = X.T.dot(W).dot(X)
-        return H
 
-    def fit(self):
-        theta = np.ones(self.X.shape[1])
-        optimizer = minimize(self.loglike, theta, jac=self.gradient, 
-                             hess=self.hessian, method='trust-constr',
-                             options={'verbose':0})
-        self.optimizer = optimizer
-        self.beta = optimizer.x
+class LM:
+    
+    def __init__(self, formula, data):
+        y, X = dmatrices(formula, data=data, return_type='dataframe')
+        self.X, self.y = X, y
+        self.sumstats = self.lmss(X, y)
+        self.gram = einv(X.T.dot(X))
+        self.coefs = _check_np(self.gram.dot(X.T).dot(_check_np(y)))
+        self.yhat = _check_np(X).dot(self.coefs)
+        self.error_var = np.sum((_check_np(y) - self.yhat)**2, 
+                                axis=0)/(X.shape[0]-X.shape[1]-1)
+        self.coefs_se = np.sqrt(np.diag(self.gram*self.error_var))
+        self.ll = self.loglike(self.coefs, self.error_var)
+        beta = np.concatenate([_check_2d(self.coefs), _check_2d(self.coefs_se)],
+                               axis=1)
+        self.res = pd.DataFrame(beta, index=self.X.columns, columns=['beta', 'SE'])
+        self.res['t'] = self.res['beta'] / self.res['SE']
+        self.res['p'] = t_dist.sf(abs(self.res['t']), X.shape[0]-X.shape[1])*2.0
+        
+    
+    def lmss(self, X, y):
+        di = X.design_info
+        #if 'Intercept' in X.columns.tolist():
+        #    dnames = di.term_names[1:]
+        #else:
+        #    dnames = di.term_names
+        Xmats = [X.loc[:, di.subset(x).column_names] for x in di.term_names[1:]]
+        #Xmats = [X.iloc[:, di.slice(x)] for x in dnames]
+        Xmats = OrderedDict(zip(di.term_names[1:], Xmats))
+        
+        anv = OrderedDict()
+        for key in Xmats.keys():
+            anv[key] = np.concatenate(self.minimum_ols(Xmats[key], y))
+        
+        anova_table = pd.DataFrame(anv, index=['sst', 'ssr', 'sse', 'mst', 'msr',
+                                               'mse', 'r2', 'r2_adj']).T
+            
+        anova_table['F'] = anova_table.eval('msr/mse')
+        return anova_table
     
     
+    def minimum_ols(self, X, y):
+        n, p = X.shape
+        dfe = n - p - 1.0
+        dft = n - 1.0
+        dfr = p
+        
+        sst = np.var(y, axis=0)*y.shape[0]
+        
+        G = pinv(X.T.dot(X))
+        beta =  G.dot(X.T.dot(y))
+        yhat = _check_np(X.dot(beta))
+        
+        ssr = np.sum((yhat - _check_np(np.mean(y, axis=0)))**2, axis=0)
+        sse = np.sum((yhat - _check_np(y))**2, axis=0)
+        
+        res = [sst, ssr, sse, sst/dft, ssr/dfr, sse/dfe, ssr/sst, 1.0 - (sse/dfe)/(sst/dft)]
+        res = [_check_np(_check_1d(x)) for x in res]
+        return res
+    
+    def loglike(self, coefs, error_var):
+        n = self.X.shape[0]
+        k = n/2.0 * np.log(2*np.pi)
+        ldt = n/2.0*np.log(error_var)
+        dev = 0.5
+        ll = k + ldt + dev
+        return ll
 
-class Logistic:
     
-    def __init__(self, frm=None, data=None, X=None, Y=None):
-        if frm is not None:
-            Y, X = dmatrices(frm, data, return_type='dataframe')
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
-        self.dfe = self.X.shape[0] - self.X.shape[1]
-    def mean_func(self, X):
-        P = exp(X)
-        return P/(1.0+P)
-    
-    def mean_func_prime(self, X):
-        P = exp(X)
-        return P/((1.0+P)**2.0)
-    
-    def loglike(self, beta):
-        X, Y = self.X, self.Y
-        eta = self.mean_func(X.dot(beta))
-        a1, a2 = log(np.maximum(eta, 1e-16)), log(np.maximum(1.0-eta, 1e-16))
-        LL = Y.T.dot(a1) + (1.0 - Y).T.dot(a2)
-        return -_check_0d(LL)
-    
-    def gradient(self, beta):
-        X, Y = self.X, self.Y
-        eta = self.mean_func(X.dot(beta))
-        return -_check_1d(X.T.dot(_check_1d(Y)-eta))
-    
-    def hessian(self, beta):
-        X = self.X
-        W = np.diag(self.mean_func_prime(X.dot(beta)))
-        H = X.T.dot(W).dot(X)
-        return H
-    
-    def fit(self, verbose=2):
-        X0 = np.ones((self.X.shape[0], 1))
-        intercept_model = minimal_logistic(X0, self.Y)
-        intercept_model.fit()
-        self.intercept_model = intercept_model
-        
-        self.LL0 = intercept_model.loglike(intercept_model.beta)
-        theta = np.ones(self.X.shape[1])
-        optimizer = minimize(self.loglike, theta, jac=self.gradient, 
-                             hess=self.hessian, method='trust-constr',
-                             options={'verbose':verbose})
-        self.optimizer = optimizer
-        self.beta = optimizer.x
-        self.hess = self.hessian(self.beta)
-        self.grad = self.gradient(self.beta)
-        self.vcov = einv(self.hess)
-        self.beta_se = np.sqrt(np.diag(self.vcov))
-        self.tvals = self.beta/self.beta_se
-        self.pvals = t_dist.sf(abs(self.tvals), self.dfe)*2.0
-        self.res = pd.DataFrame(np.vstack([self.beta, self.beta_se,
-                                           self.tvals, self.pvals]).T, 
-                                           index=self.xcols, 
-                                           columns=['beta', 'SE', 't', 'p'])
-        self.LLA = self.loglike(self.beta)
-        self.LLR = 2.0*(self.LL0-self.LLA)
-        self.sse = np.sum((self.Y[:, 0]-self.predict())**2)
-        self.sst = np.var(self.Y)*self.Y.shape[0]
-        n, p = self.X.shape[0], self.X.shape[1]
-        yhat = self.predict()
-        self.ssr =np.sum(yhat**2)
-        count = self.Y.T.dot(yhat>0.5)
-        psuedo_r2 = {}
-        psuedo_r2['Efron'] = 1 - self.sse / self.sst
-        psuedo_r2['McFaddens'] = 1 - self.LLA/self.LL0
-        psuedo_r2['McFaddens_adj'] = 1 - (self.LLA-p)/self.sst
-        psuedo_r2['McKelvey'] = self.ssr/(self.ssr+n)
-        psuedo_r2['Aldrich'] = self.LLR/(self.LLR+n)
-        psuedo_r2['Count'] = count/np.sum(self.Y)
-        self.psuedo_r2 = psuedo_r2
-        self.LLRp =  chi2_dist.sf(self.LLR, len(self.beta))
-        
-        
-        
-    def predict(self, X=None):
-        if X is None:
-            X = self.X
-        eta = self.mean_func(X.dot(self.beta))
-        return eta
-    
-'''
-
 
 class MinimalGLM:
     
@@ -183,16 +127,14 @@ class MinimalGLM:
         self.optimizer = optimizer
         self.beta = optimizer.x
         
-        
-        
-        
-        
-
 
 class GLM:
     
     def __init__(self, frm=None, data=None, X=None, Y=None, family=None):
         '''
+        Currently only supports canonical links for binomial, poisson,
+        and gamma distributions.
+        
         examples:
             
         data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv")
@@ -207,15 +149,14 @@ class GLM:
         frm = "GRADE ~ GPA+TUCE+PSI"
         model = GLM(frm=frm, data=data, family='binomial')
         model.fit()
-        
-        
-        
         '''
         if family.lower() in ['binomial', 'binom', 'logit', 'logistic', 'binary', 
                       'bernoulli', 'bern']:
             self.family = LogisticGLM()
         elif family.lower() in ['poisson', 'pois', 'count']:
             self.family = PoissonGLM()   
+        elif family.lower() in ['gamma', 'gam']:
+            self.family = GammaGLM()
         if frm is not None:
             Y, X = dmatrices(frm, data, return_type='dataframe')
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
@@ -288,8 +229,6 @@ class GLM:
         return self.family.cumulant_prime(X.dot(self.beta))
 
         
-
-
       
 class LogisticGLM:
     
@@ -328,97 +267,24 @@ class PoissonGLM:
     def cumulant_double_prime(self, Xb):
         d2b = np.exp(Xb)
         return d2b
-
-
- '''   
-class NegBinomial:
-    
-    def __init__(self, frm=None, data=None, X=None, Y=None, type_=2):
-        '''
-        data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv")
-        frm="num_awards ~ C(prog) + math"
-        model = NegBinomial(frm=frm, data=data)
-        model.loglike(model.theta_init)
-        model.gradient(model.theta_init)
-        approx_fprime(model.theta_init, model.loglike, 1e-8)
-        res = minimize(model.loglike, model.theta_init, 
-                       jac=model.gradient, hess=model.hessian,
-                       method='trust-constr', options={'maxiter':5000})
-        
-        '''
-        
-        if frm is not None:
-            Y, X = dmatrices(frm, data, return_type='dataframe')
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
-        self.n_obs, self.n_feats = self.X.shape
-        self.dfe = self.n_obs - self.n_feats
-        self.jn = np.ones((self.n_obs, 1))
-        self.YtX = self.Y.T.dot(self.X)
-        poisson_model = GLM(frm, data, family='poisson')
-        poisson_model.fit()
-        theta_init = poisson_model.beta
-        theta_init = np.concatenate([theta_init, np.ones(1)])/2
-        self.theta_init = theta_init
-        self.nbp = 2-type_
-        
-    def loglike(self, theta):
-        X, Y, nbp = self.X, _check_1d(self.Y), self.nbp
-        kappa, beta = theta[-1], theta[:-1]
-        lmb = np.exp(X.dot(beta))
-        Z = kappa * lmb**nbp
-        M = kappa / (kappa + lmb)
-        L1 = gammaln(Y+Z) - gammaln(Z) - gammaln(1+Y)
-        L2 = Z.T.dot(log(M)) + Y.T.dot(log(1-M))
-        LL = np.sum(L1)+L2
-        return -LL
-    
-    def gradient(self, theta):
-        theta = _check_1d(theta)
-        X, Y, nbp = self.X, _check_1d(self.Y), self.nbp
-        kappa, beta = theta[-1], theta[:-1]
-        lmb = np.exp(X.dot(beta))
-        Z = kappa * lmb**nbp
-        W = Z / (Z + lmb)
-        gb = (kappa * ((Y - lmb) / (kappa + lmb))).T.dot(X)
-        dgdk = Z / kappa
-        dwdk = (1 / kappa) * W * (1 - W)
-        dk1 = (digamma(Y+Z) - digamma(Z) + np.log(W)).T.dot(dgdk)
-        dk2 = (Z / W - Y / (1 - W)).T.dot(dwdk)
-        gk = dk1+dk2
-        g = np.concatenate([gb, -np.array([gk])])
-        return -g
-    
-    def hessian(self, theta):
-        X, Y, n = self.X, _check_1d(self.Y), self.n_obs
-        kappa, beta = theta[-1], theta[:-1]
-        lmb = np.exp(X.dot(beta))
-        u = lmb * (kappa+Y)
-        v = (kappa + lmb)**2
-        Hb = kappa * X.T.dot(np.diag(-u/v)).dot(X)
-        Hbk = ((Y - lmb) * (kappa / (kappa + lmb))).T.dot(X)
-        Hk1 = polygamma(1, Y+kappa) - (1 / (lmb+kappa))
-        Hk2 = n*(1/kappa+polygamma(1, kappa))
-        Hk = np.array([[Hk2]])+np.sum(Hk1)
-        H = np.block([[Hb, Hbk[:, None]], [Hbk[:, None].T, Hk]])
-        return -H
-        
     
     
+class GammaGLM:
     
-        
-   '''     
-        
-
-
-
-
-
-
-
-
-
-
-
-   
+    def __init__(self):
+        self.dist = 'g'
     
+    def cumulant(self, Xb):
+        bt = -np.log(-Xb)
+        return bt
+    
+    def cumulant_prime(self, Xb):
+        db = -1/Xb
+        return db
+    
+    def cumulant_double_prime(self, Xb):
+        d2b = 1/(Xb**2)
+        return d2b
+
+
+
