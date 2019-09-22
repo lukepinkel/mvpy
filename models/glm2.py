@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
@@ -6,6 +5,7 @@ Created on Sat Sep 21 18:08:10 2019
 
 @author: lukepinkel
 """
+
 import pandas as pd
 import numpy as np
 from numpy import log, exp
@@ -51,8 +51,9 @@ class MinimalGLM:
         mu = self.f.inv_link(eta)
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
-        W = einv(V).dot(np.diag(self.f.dinv_link(eta)))
-        G = -(_check_1d(Y) - mu).T.dot(W)
+        Vinv =1.0/V
+        W = Vinv * self.f.dinv_link(eta)
+        G = -(_check_1d(Y) - mu) * W
         g = X.T.dot(G)
         return g
     
@@ -63,16 +64,16 @@ class MinimalGLM:
         mu = self.f.inv_link(eta)
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
-        Vinv = einv(V)
+        Vinv = 1.0/V
         W0 = self.f.dinv_link(eta)**2
-        W1 = np.diag(self.f.d2inv_link(eta))
+        W1 = self.f.d2inv_link(eta)
         W2 = self.f.d2canonical(mu)
         
-        Psc = np.diag(Y-mu).dot((np.diag(W2*W0)+W1.dot(Vinv)))
-        Psb = Vinv.dot(np.diag(W0))
+        Psc = (_check_1d(Y)-mu) * (W2*W0+W1*Vinv)
+        Psb = Vinv*W0
         W = Psc - Psb
         
-        H = X.T.dot(W).dot(X)
+        H = (X.T * W).dot(X)
         return -H
     
     def fit(self, verbose=2):
@@ -115,8 +116,9 @@ class GLM:
         mu = self.f.inv_link(eta)
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
-        W = einv(V).dot(np.diag(self.f.dinv_link(eta)))
-        G = -(_check_1d(Y) - mu).T.dot(W)
+        Vinv =1.0/V
+        W = Vinv * self.f.dinv_link(eta)
+        G = -(_check_1d(Y) - mu) * W
         g = X.T.dot(G)
         return g
     
@@ -127,19 +129,20 @@ class GLM:
         mu = self.f.inv_link(eta)
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
-        Vinv = einv(V)
+        Vinv = 1.0/V
         W0 = self.f.dinv_link(eta)**2
-        W1 = np.diag(self.f.d2inv_link(eta))
+        W1 = self.f.d2inv_link(eta)
         W2 = self.f.d2canonical(mu)
         
-        Psc = np.diag(Y-mu).dot((np.diag(W2*W0)+W1.dot(Vinv)))
-        Psb = Vinv.dot(np.diag(W0))
+        
+        Psc = (_check_1d(Y)-mu) * (W2*W0+W1*Vinv)
+        Psb = Vinv*W0
         W = Psc - Psb
         
-        H = X.T.dot(W).dot(X)
+        H = (X.T * W).dot(X)
         return -H
     
-    def fit(self):
+    def fit(self, verbose=0):
         X0 = np.ones((self.n_obs, 1))
         intercept_model = MinimalGLM(X0, self.Y, self.f)
         intercept_model.fit()
@@ -147,7 +150,8 @@ class GLM:
         self.LL0 = intercept_model.loglike(intercept_model.beta)
         theta = self.theta_init
         optimizer = minimize(self.loglike, theta, jac=self.gradient, 
-                             hess=self.hessian, method='trust-constr')        
+                             hess=self.hessian, method='trust-constr',
+                             options={'verbose':verbose})        
         self.optimizer = optimizer
         self.beta = optimizer.x
         self.hess = self.hessian(self.beta)
@@ -187,8 +191,10 @@ class Bernoulli:
     def __init__(self, link='canonical'):
         if link is 'canonical':
             self.link=LogitLink()
+            self.type_='canonical'
         else:
             self.link = link
+            self.type_='noncanonical'
     def canonical_parameter(self, mu):
         u = mu / (1  - mu)
         T = np.log(u)
@@ -215,7 +221,7 @@ class Bernoulli:
     
     def var_func(self, T):
         mu = self.mean_func(T)
-        V = np.diag(_check_1d(mu * (1 - mu)))
+        V = _check_1d(mu * (1 - mu))
         return V
                 
     def d2canonical(self, mu):
@@ -233,8 +239,10 @@ class Poisson:
     def __init__(self, link='canonical'):
         if link is 'canonical':
             self.link=LogLink()
+            self.type_='canonical'
         else:
             self.link = link
+            self.type_='noncanonical'
     def canonical_parameter(self, mu):
         T = np.log(mu)
         return T
@@ -258,7 +266,7 @@ class Poisson:
     
     def var_func(self, T):
         mu = self.mean_func(T)
-        V = np.diag(_check_1d(mu))
+        V = _check_1d(mu)
         return V
                 
     def d2canonical(self, mu):
@@ -286,7 +294,7 @@ class LogitLink:
         
     def d2inv_link(self, eta):
         u = np.exp(eta)
-        d2mu = (u * (u - 1.0)) / ((1.0 + u)**3)
+        d2mu = -(u * (u - 1.0)) / ((1.0 + u)**3)
         return d2mu
 
 class ProbitLink:
