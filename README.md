@@ -18,7 +18,7 @@ Currently includes rough implementations of
 - Structural equation modeling (ML)
 - Simple linear models
 
-Although all of these have been tested against results published in the literature, or those obtained in R, they have not been tested systematically, and some of the code is very rough.
+Although all of these have been tested against results published in the literature, or those obtained in R(in some cases transitively via statsmodels), they have not been tested systematically, and some of the code is very rough.
 
 The cumulative link model is planned to be subsumed by a GLM module, while the factor analytic methods, latent variable correlation methods, and structural equation models are planned to be implemented under a general latent variable model.  
 
