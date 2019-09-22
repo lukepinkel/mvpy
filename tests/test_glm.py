@@ -11,7 +11,7 @@ import statsmodels.api as sm
 from mvpy.models import glm2
 reload(glm2)
 
-#Bernoulli
+#Bernoulli 1
 spector_data = sm.datasets.spector.load_pandas()
 
 spector_data.exog = sm.add_constant(spector_data.exog)
@@ -24,6 +24,15 @@ mod = glm2.GLM("GRADE~GPA+TUCE+PSI", data=data, fam=glm2.Bernoulli())
 mod.fit()
 mod.res
 smglm.params
+
+#Bernoulli 2
+smglm = sm.formula.probit("GRADE~GPA+TUCE+PSI", data=data).fit()
+smglm.summary()
+mod = glm2.GLM("GRADE~GPA+TUCE+PSI", data=data, fam=glm2.Bernoulli(link=glm2.ProbitLink()))
+mod.fit()
+mod.res
+smglm.params
+
 #Poisson 1
 
 data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv", index_col=0)

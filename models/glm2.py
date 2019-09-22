@@ -88,6 +88,20 @@ class MinimalGLM:
 class GLM:
     
     def __init__(self, frm=None, data=None, fam=None):
+        '''
+        Generalized linear model class.  Currently supports
+        dependent Bernoulli and Poisson variables, and 
+        logit, probit, log, and reciprocal link functions.
+        
+        Inverse Gaussian, and Gamma will be added to distributions
+        Cloglog, and identity link functions will be added
+        Parameters
+        -----------
+            frm: string, formula
+            data: dataframe
+            fam: class of the distribution being modeled  
+        
+        '''
         self.f = fam
         Y, X = dmatrices(frm, data, return_type='dataframe')
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
@@ -171,13 +185,13 @@ class GLM:
         n, p = self.X.shape[0], self.X.shape[1]
         yhat = self.predict()
         self.ssr =np.sum(yhat**2)
-        psuedo_r2 = {}
-        psuedo_r2['Efron'] = 1 - self.sse / self.sst
-        psuedo_r2['McFaddens'] = 1 - self.LLA/self.LL0
-        psuedo_r2['McFaddens_adj'] = 1 - (self.LLA-p)/self.sst
-        psuedo_r2['McKelvey'] = self.ssr/(self.ssr+n)
-        psuedo_r2['Aldrich'] = self.LLR/(self.LLR+n)
-        self.psuedo_r2 = psuedo_r2
+        pseudo_r2 = {}
+        pseudo_r2['Efron'] = 1 - self.sse / self.sst
+        pseudo_r2['McFaddens'] = 1 - self.LLA/self.LL0
+        pseudo_r2['McFaddens_adj'] = 1 - (self.LLA-p)/self.sst
+        pseudo_r2['McKelvey'] = self.ssr/(self.ssr+n)
+        pseudo_r2['Aldrich'] = self.LLR/(self.LLR+n)
+        self.pseudo_r2 = pseudo_r2
         self.LLRp =  chi2_dist.sf(self.LLR, len(self.beta))
     
     def predict(self, X=None):
@@ -304,6 +318,7 @@ class ProbitLink:
         
     def inv_link(self, eta):
         mu = spstats.norm.cdf(eta, loc=0, scale=1)
+        mu[mu==1.0]-=1e-16
         return mu
     
     def dinv_link(self, eta):
