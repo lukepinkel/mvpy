@@ -17,6 +17,11 @@ Currently includes rough implementations of
   - Canonical correlation
 - Structural equation modeling (ML)
 - Simple linear models
+- Generalized Linear Models 
+  - Poission, Gamma, and Bernoulli distributions
+  - Logit, Probit, Log, and Reciprocal links
+- Negative Binomial Models
+  - Currently only supports NB2, although plans exist to implement other overdispersed count models 
 
 Although all of these have been tested against results published in the literature, or those obtained in R(in some cases transitively via statsmodels), they have not been tested systematically, and some of the code is very rough.
 
