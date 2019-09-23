@@ -184,16 +184,51 @@ class GLM:
         self.sst = np.var(self.Y)*self.Y.shape[0]
         n, p = self.X.shape[0], self.X.shape[1]
         yhat = self.predict()
-        self.ssr =np.sum(yhat**2)
+        y = _check_1d(self.Y)
+        self.var_mu = self.f.var_func(self.f.canonical_parameter(yhat)).mean()
+       
+        self.ssr =np.sum((yhat - yhat.mean())**2)
+        pt = y.mean()
+        rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
+        rmax_an = -2*(pt*log(pt) + (1-pt)*log(1-pt))
+        rmax_an = rmax_an / (1 + rmax_an)
+     
+        mu_p = yhat.mean()
         pseudo_r2 = {}
-        pseudo_r2['Efron'] = 1 - self.sse / self.sst
+        pseudo_r2['Lave-Efron'] = 1 - self.sse / self.sst
+        pseudo_r2['Cox-Snell'] = 1 - np.exp(2.0/n*(self.LLA-self.LL0))
+        pseudo_r2['Nagelkerke'] = pseudo_r2['Cox-Snell'] / rmax
         pseudo_r2['McFaddens'] = 1 - self.LLA/self.LL0
-        pseudo_r2['McFaddens_adj'] = 1 - (self.LLA-p)/self.sst
-        pseudo_r2['McKelvey'] = self.ssr/(self.ssr+n)
+        pseudo_r2['McFaddens_adj'] = 1 - (self.LLA-p)/self.LL0
+        pseudo_r2['McKelvey'] = self.ssr/(self.ssr+3.29*n)
         pseudo_r2['Aldrich'] = self.LLR/(self.LLR+n)
+        pseudo_r2['Veall-Zimmerman'] = pseudo_r2['Aldrich'] / rmax_an
+        pseudo_r2['Tjur-mod'] = ((yhat - mu_p)**2).sum()/(n*mu_p*(1 - mu_p))
+        pseudo_r2['Tjur-res'] = 1 - (yhat * (1 - yhat)).sum() / (n*mu_p*(1 - mu_p))
+        pseudo_r2['D'] = 0.5 * (pseudo_r2['Tjur-mod'] + pseudo_r2['Tjur-res'])
         self.pseudo_r2 = pseudo_r2
         self.LLRp =  chi2_dist.sf(self.LLR, len(self.beta))
-    
+        self.pearson_chi2 = self.sse / self.var_mu
+        self.deviance = self.f.deviance(self.optimizer.x, self.X, self.Y)
+        self.scale_chi2 = self.pearson_chi2 / (n-p)
+        self.scale_dev = self.deviance.sum() / (n - p)
+        self.pearson_resid = (y - yhat)*np.sqrt(1/self.var_mu)
+        self.deviance_resid = np.sign(y - yhat) * np.sqrt(self.deviance)
+        self.AIC = 2*self.LLA + 2*p
+        self.AICC = 2*self.LLA + 2*p*n/(n-p-1)
+        self.BIC = 2*self.LLA + p*log(n)
+        ix = ['LL Model', 'LL Intercept', 'LL Ratio', 'LLR p value', 
+              'Pearson chi2', 'Deviance', 'AIC', 'AICC', 'BIC']
+        self.sumstats = pd.DataFrame(
+                [self.LLA, self.LL0, self.LLR, self.LLRp, self.pearson_chi2, 
+                 self.deviance.sum(), self.AIC, self.AICC, self.BIC], index=ix,
+                 columns=['Value'])
+        self.sumstats = pd.concat([self.sumstats, pd.DataFrame(self.pseudo_r2, 
+                                                index=['Value']).T],axis=0)
+        
+        
+        
+     
     def predict(self, X=None):
         if X is None:
             X = self.X
@@ -247,6 +282,21 @@ class Bernoulli:
         phi = 1.0
         return beta, phi
     
+    def deviance(self, params, X, Y):
+        y = _check_1d(Y)
+        mu = self.inv_link(X.dot(params))
+        lna, lnb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
+        ixa, ixb = (y/mu)>0, ((1-y)/(1-mu))>0
+        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
+        lnb[ixb] = np.log((1-y[ixb])/(1-mu[ixb]))
+        d = y*lna+(1-y)*lnb
+        return 2*d
+        
+        
+        
+        
+        
+    
 
 class Poisson:
     
@@ -290,6 +340,15 @@ class Poisson:
         beta = params
         phi = 1.0
         return beta, phi
+    
+    def deviance(self, params, X, Y):
+        y = _check_1d(Y)
+        mu = self.inv_link(X.dot(params))
+        lna = np.zeros(y.shape[0])
+        ixa = (y/mu)>0
+        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
+        d = y*lna+(y-mu)
+        return 2*d
     
 class LogitLink:
 
@@ -407,12 +466,6 @@ class PowerLink:
             d2mu = (eta**(1/alpha) * lnx * (lnx+2*alpha)) / alpha**4
         return d2mu
     
-    
-
-    
-    
-    
-
     
 
     
