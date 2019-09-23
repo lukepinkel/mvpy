@@ -97,7 +97,7 @@ def log_like(X, a, b, r):
         ll: Log likelihood
     '''
     pr = probs(a, b, r)
-    if len(pr.shape)>3:
+    if len(pr.shape)>=3:
         pr = pr[:, :, 0]
     n, k = pr.shape
     pr = np.array([[pr[i, j]+pr[i-1,j-1]-pr[i-1,j]-pr[i,j-1] 
@@ -119,33 +119,50 @@ def normal_categorical(x, nx):
     xcat = pd.qcut(x, nx, labels=[i for i in range(nx)]).astype(float)
     return xcat
 
-def polychor(x, y):
-    '''
-    Polychoric correlation estimate
-    
-    Parameters:
-        
-        x: n by 1 vector
-        
-        y: n by 1 vector
-    
-    Returns:
-        
-        ml_rho: maximum likelihood correlation between x and y
-    '''
-    X = pd.crosstab(x, y).values
-    a, b = thresh(X)
-    range1 = np.linspace(-.90, .90, 100)
-    ll_step1 =  pd.DataFrame([log_like(X, a, b, z) for z in range1], index=range1)
-    llmax1 = ll_step1.idxmax()
-    range2 = np.linspace(llmax1-0.1, llmax1+0.1, 50)
-    if len(range2.shape)>1:
-        range2 = range2[:, 0]
-    ll_step2 =  pd.DataFrame([log_like(X, a, b, z) for z in range2], index=range2)
-    ml_rho = ll_step2.idxmax()
-    return ml_rho
 
-def Polychor(data):
+def polychor_ll(params, X, k):
+    rho = params[0]
+    a, b = params[1:k+1], params[k+1:]
+    return -log_like(X, a, b, rho)
+
+
+
+def polychor_partial_ll(rho, X, k, params):
+    a, b = params[:k], params[k:]
+    return -log_like(X, a, b, rho)
+
+
+def polychorr(x, y, ret_optimizer=False):
+    xtab = pd.crosstab(x, y).values
+    a, b = thresh(xtab)
+    k = len(a)
+    rinit =  np.corrcoef(x, y, rowvar=False)
+    
+    params = np.concatenate([rinit, a, b], axis=0)
+    ca =[dict(zip(['type', 'fun'], ['ineq', lambda params: params[i+1]-params[i]]))
+         for i in range(1, k+1)]
+    
+    cb = [dict(zip(['type', 'fun'], ['ineq', lambda params: params[i+1]-params[i]]))
+          for i in range(k, k+len(b))]
+    constr= ca+cb
+    
+    bounds = [(-1.0, 1.0)]+ [(None, None) for i in range(len(params)-1)]
+    
+    optimizer = minimize(polychor_ll, params, args=(xtab, k), bounds=bounds,
+                   constraints=constr)
+    
+    if np.isnan(optimizer.fun):
+        optimizer = minimize(polychor_ll, params, args=(xtab, k), bounds=bounds)
+        
+    params = optimizer.x
+    rho, a, b = params[0], params[1:k+1], params[k+1:]
+    if ret_optimizer is False:
+        return rho, a, b
+    else:
+        return rho, a, b, optimizer
+
+
+def Polychorr(data):
     '''
     Polychoric correlation estimate for a matrix
     
@@ -157,7 +174,7 @@ def Polychor(data):
 
     '''
     feats = data.columns
-    R = [[polychor(data[i], data[j])[0] for c1, i in enumerate(feats)
+    R = [[polychorr(data[i], data[j])[0] for c1, i in enumerate(feats)
     if c1<c2] for c2, j in enumerate(feats)]      
     R = pd.DataFrame(R, index=feats, columns=feats[:-1])
     R[feats[-1]] = [np.nan for i in range(len(feats))]
