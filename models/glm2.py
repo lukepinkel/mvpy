@@ -362,6 +362,57 @@ class ReciprocalLink:
         d2mu = 2 / (eta**3)
         return d2mu
 
+class CloglogLink:
+    
+    def __init__(self):
+        self.fnc='cloglog'
+        
+    def inv_link(self, eta):
+        mu = 1.0-np.exp(-np.exp(eta))
+        return mu
+    
+    def dinv_link(self, eta):
+        dmu = np.exp(eta-np.exp(eta))
+        return dmu
+    def d2inv_link(self, eta):
+        d2mu = -np.exp(eta - np.exp(eta)) * (np.exp(eta) - 1.0)
+        return d2mu
+
+class PowerLink:
+    
+    def __init__(self, alpha):
+        self.fnc = 'power'
+        self.alpha=alpha
+        
+    def inv_link(self, eta):
+        if self.alpha==0:
+            mu = np.exp(eta)
+        else:
+            mu = eta**(1/self.alpha)
+        return mu
+    
+    def dinv_link(self, eta):
+        if self.alpha==0:
+            dmu = np.exp(eta)
+        else:
+            dmu = -(eta**(1/self.alpha) * np.log(eta)) / (self.alpha**2)
+        return dmu
+    
+    def d2inv_link(self, eta):
+        alpha=self.alpha
+        lnx = np.log(eta)
+        if alpha==0:
+            d2mu = np.exp(eta)
+        else:
+            d2mu = (eta**(1/alpha) * lnx * (lnx+2*alpha)) / alpha**4
+        return d2mu
+    
+    
+
+    
+    
+    
+
     
 
     

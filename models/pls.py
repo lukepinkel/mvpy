@@ -12,7 +12,7 @@ from numpy import dot, sqrt, eye, diag, log, zeros
 from numpy.linalg import multi_dot, norm, pinv
 from scipy.stats import f as f_dist, chi2 as chi2_dist, t as t_dist
 from scipy.stats import scoreatpercentile
-from scipy.linalg import block_diag
+from scipy.linalg import block_diag, svd
 
 from ..utils.base_utils import (csd, check_type, corr, cov, center)
 from ..utils.linalg_utils import  (inv_sqrth, sorted_eigh,
@@ -207,40 +207,31 @@ def simpls(X, Y, ncomps):
     n, m, q = X.shape[0], X.shape[1], Y.shape[1]
     T, P = np.zeros((n, ncomps)), np.zeros((m, ncomps))
     U, Q = np.zeros((n, ncomps)), np.zeros((q, ncomps))
-    V = np.zeros((m, ncomps))
     R = np.zeros((m, ncomps))
-    
     for i in range(ncomps):
-        eigvals, eigvecs = sorted_eigh(dot(S.T, S))
-        r = dot(S, eigvecs[:, [0]])
+        if i==0:
+            r, s, Vt = svd(S, full_matrices=False)
+        else:
+            Pi = P[:, :i]
+            Sk = S - multi_dot([Pi, pinv(Pi.T.dot(Pi)), Pi.T, S])
+            r, s, Vt = svd(Sk, full_matrices=False)
+        r = r[:, [0]]
         t = dot(X, r)
-        t -= np.mean(t)
-        r /= norm(t)
-        t /= norm(t)
-        p = dot(X.T, t)
-        q = dot(Y.T, t)
-        u = dot(Y, q)
-        v = p
-        if i>1:
-            v = v - multi_dot([V, V.T, p])
-            u = u - multi_dot([T, T.T, u])
-        v /= sqrt(dot(v.T, v))
-        S -= multi_dot([v, v.T, S])
-        
+        t -= t.mean()
+        p = dot(X.T, t) / dot(t.T, t)
+        q = dot(Y.T, t) / dot(t.T, t)
+        u = dot(Y, q) 
+        u -= u.mean()         
         R[:, i] = r[:, 0]
         T[:, i] = t[:, 0]
         P[:, i] = p[:, 0]
         Q[:, i] = q[:, 0]
         U[:, i] = u[:, 0]
-        V[:, i] = v[:, 0]
         
-    B  = dot(R, Q.T)
-    U /= sqrt(norm(U, axis=0))
-    Q /= norm(Q, axis=0)
-    Vp = norm(P, axis=0)
-    P /= Vp
-    T *= Vp
-    return T, P, U, Q, R, V, B
+    B = dot(R, Q.T)
+    U = U/sqrt(norm(U, axis=0))
+    Q = Q/norm(Q, axis=0)
+    return T, P, U, Q, R, B
 
 
 
@@ -332,8 +323,7 @@ class PLSR:
                                                  n_iters=n_iters, tol=tol)
         elif method is 'SIMPLS':
             self.x_factors, self.x_loadings, self.y_factors, \
-            self.y_loadings, self.x_weights, self.y_weights, \
-            self.coefs = simpls(self.X, self.Y, self.ncomps)
+            self.y_loadings,  self.coefs = simpls(self.X, self.Y, self.ncomps)
             
         elif method is 'W2A':
             self.x_factors, self.y_factors, self.x_loadings, \
@@ -374,7 +364,7 @@ class PLSR:
                 _, XL, _, YL, B = nipals(X_samples, Y_samples, self.ncomps,
                                            n_iters=n_nipals_iters, tol=tol)
             elif method is 'SIMPLS':
-                _, XL, _, YL, XW, YW, B = simpls(X_samples, Y_samples,
+                _, XL, _, YL, B = simpls(X_samples, Y_samples,
                                                    self.ncomps)
             elif method is 'W2A':
                 _, _, XL, YL, B = pls_w2a(X_samples, Y_samples, self.ncomps)
