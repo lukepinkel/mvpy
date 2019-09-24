@@ -101,29 +101,21 @@ class CLM:
         H=mdot([B1.T, Phi_21, B1])-mdot([B2.T, Phi_22, B2])-mdot([dPi, Phi3, dPi.T])
         return -H
     
-    def fit(self, verbose=2, optim='double', lqp_kws={}, trust_kws={}, 
-            trust_opts={}):
+    def fit(self, optimizer_kwargs=None):
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {'method':'trust-constr',
+                                'options':{'verbose':0}}
         
         theta = norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
         beta = ones(self.X.shape[1])
         params = np.concatenate([theta, beta], axis=0)
         self.theta_init = theta
-        
-        #A little overkill
+        self.params_init = params
+
         res = minimize(self.loglike, params, constraints=self.constraints,
-                       method='SLSQP', **lqp_kws)
+                       jac=self.gradient, hess=self.hessian, **optimizer_kwargs)
         
-        if optim.lower() in ['double', 'dual', '2']:
-            
-            options = {'verbose':verbose}
-            for x in trust_opts.keys():
-                options[x] = trust_opts[x]
-                
-            res = minimize(self.loglike, res.x, constraints=self.constraints,
-                           jac=self.gradient, hess=self.hessian,
-                           method='trust-constr', options=options,
-                           **trust_kws)
-            
+
         self.params = res.x
         self.optimizer = res
         self.H = self.hessian(self.params)
