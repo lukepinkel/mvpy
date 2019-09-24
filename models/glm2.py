@@ -156,7 +156,10 @@ class GLM:
         H = (X.T * W).dot(X)
         return -H
     
-    def fit(self, verbose=0):
+    def fit(self, optimizer_kwargs=None):
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {'method':'trust-constr',
+                                'options':{'verbose':0}}
         X0 = np.ones((self.n_obs, 1))
         intercept_model = MinimalGLM(X0, self.Y, self.f)
         intercept_model.fit()
@@ -164,8 +167,7 @@ class GLM:
         self.LL0 = intercept_model.loglike(intercept_model.beta)
         theta = self.theta_init
         optimizer = minimize(self.loglike, theta, jac=self.gradient, 
-                             hess=self.hessian, method='trust-constr',
-                             options={'verbose':verbose})        
+                             hess=self.hessian, **optimizer_kwargs)        
         self.optimizer = optimizer
         self.beta = optimizer.x
         self.hess = self.hessian(self.beta)
@@ -349,6 +351,63 @@ class Poisson:
         lna[ixa] = np.log(y[ixa]/mu[ixa]) 
         d = y*lna+(y-mu)
         return 2*d
+    
+
+class Gamma:
+    
+    def __init__(self, link='canonical'):
+        if link is 'canonical':
+            self.link=ReciprocalLink()
+            self.type_='canonical'
+        else:
+            self.link = link
+            self.type_='noncanonical'
+    def canonical_parameter(self, mu):
+        T = 1.0 / mu
+        return T
+    
+    def inv_link(self, eta):
+        return self.link.inv_link(eta)
+        
+    def dinv_link(self, eta):
+        return self.link.dinv_link(eta)
+    
+    def d2inv_link(self, eta):
+        return self.link.d2inv_link(eta)
+    
+    def cumulant(self, T):
+        b = -np.log(-T)
+        return b
+    
+    def mean_func(self, T):
+        mu = -1 / T
+        return mu
+    
+    def var_func(self, T):
+        mu = self.mean_func(T)
+        V = _check_1d(mu)**2
+        return V
+                
+    def d2canonical(self, mu):
+        res = 2 /(mu**3)
+        return res
+    
+    def unpack_params(self, params):
+        beta = params
+        phi = 1.0
+        return beta, phi
+    
+    def deviance(self, params, X, Y):
+        y = _check_1d(Y)
+        mu = self.inv_link(X.dot(params))
+        lna, lb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
+        ixa, ixb = (y/mu)>0, mu!=0
+        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
+        lb[ixb] = (y - mu) / mu
+        d = lb - lna
+        return 2*d
+    
+    
     
 class LogitLink:
 
