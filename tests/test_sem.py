@@ -10,7 +10,7 @@ from mvpy.api import SEMModel
 import pandas as pd
 import numpy as np
 
-data = pd.read_csv("/users/lukepinkel/Downloads/Bollen.csv", index_col=0)
+data = pd.read_csv("/users/lukepinkel/Downloads/bollen.csv", index_col=0)
 data = data[['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'y4', 'y5',
              'y6', 'y7', 'y8', ]]
 
@@ -45,8 +45,22 @@ Beta.index = Lambda.columns
 
 Theta = pd.DataFrame(np.eye(Lambda.shape[0]),
                      index=Lambda.index, columns=Lambda.index)
+Theta.loc['y1', 'y5'] = 0.05
+Theta.loc['y2', 'y4'] = 0.05
+Theta.loc['y2', 'y6'] = 0.05
+Theta.loc['y3', 'y7'] = 0.05
+Theta.loc['y4', 'y8'] = 0.05
+Theta.loc['y6', 'y8'] = 0.05
+
+Theta.loc['y5', 'y1'] = 0.05
+Theta.loc['y4', 'y2'] = 0.05
+Theta.loc['y6', 'y2'] = 0.05
+Theta.loc['y7', 'y3'] = 0.05
+Theta.loc['y8', 'y4'] = 0.05
+Theta.loc['y8', 'y6'] = 0.05
+
 
 sem_mod = SEMModel(Zg, Lambda, Beta, Theta.values)
-sem_mod.fit(xtol=1e-500, gtol=1e-500, maxiter=300)
+sem_mod.fit(xtol=1e-500, gtol=1e-500, maxiter=2000)
 sem_mod.res
 

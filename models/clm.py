@@ -8,21 +8,20 @@ Created on Wed Sep 11 20:41:56 2019
 
 import numpy as np
 import pandas as pd
-
+import scipy as sp
+import scipy.optimize
+import patsy
 from numpy import exp, ones, dot, diag
-from patsy import dmatrices
-from scipy.optimize import minimize
-from ..utils.linalg_utils import einv, _check_1d, mdot
-from ..utils.base_utils import check_type
-from ..utils.statfunc_utils import norm_qtf
+
+from ..utils import linalg_utils, base_utils, statfunc_utils
 
 class CLM:
     
     def __init__(self, frm, data, X=None, Y=None):
-        Y, X = dmatrices(frm, data, return_type='dataframe')
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_p = check_type(Y)
-        self.Y = _check_1d(self.Y)
+        Y, X = patsy.dmatrices(frm, data, return_type='dataframe')
+        self.X, self.xcols, self.xix, self.x_is_pd = base_utils.check_type(X)
+        self.Y, self.ycols, self.yix, self.y_is_p = base_utils.check_type(Y)
+        self.Y = linalg_utils._check_1d(self.Y)
         self.n_cats = len(np.unique(self.Y[~np.isnan(self.Y)]))
         self.resps = np.unique(self.Y[~np.isnan(self.Y)])
         self.resps = np.sort(self.resps)
@@ -50,7 +49,7 @@ class CLM:
     
     def loglike(self, params):
         X, Y, W = self.X, self.Y, self.W
-        params = _check_1d(params)
+        params = linalg_utils._check_1d(params)
         A1, A2 = Y[:, :-1], Y[:, 1:]
         o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
         B1, B2 = np.block([A1, -X]), np.block([A2, -X])
@@ -98,7 +97,8 @@ class CLM:
         Pi = Gamma_1 - Gamma_2
         Phi3 = diag(W / Pi**2)
         dPi = dot(B1.T, Phi_11) - dot(B2.T, Phi_12)
-        H=mdot([B1.T, Phi_21, B1])-mdot([B2.T, Phi_22, B2])-mdot([dPi, Phi3, dPi.T])
+        H=linalg_utils.mdot([B1.T, Phi_21, B1])-linalg_utils.mdot([B2.T,
+                           Phi_22, B2])-linalg_utils.mdot([dPi, Phi3, dPi.T])
         return -H
     
     def fit(self, optimizer_kwargs=None):
@@ -106,20 +106,20 @@ class CLM:
             optimizer_kwargs = {'method':'trust-constr',
                                 'options':{'verbose':0}}
         
-        theta = norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
+        theta = statfunc_utils.norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
         beta = ones(self.X.shape[1])
         params = np.concatenate([theta, beta], axis=0)
         self.theta_init = theta
         self.params_init = params
 
-        res = minimize(self.loglike, params, constraints=self.constraints,
+        res = sp.optimize.minimize(self.loglike, params, constraints=self.constraints,
                        jac=self.gradient, hess=self.hessian, **optimizer_kwargs)
         
 
         self.params = res.x
         self.optimizer = res
         self.H = self.hessian(self.params)
-        self.Vcov = einv(self.H)
+        self.Vcov = np.linalg.pinv(self.H)
         self.SE = diag(self.Vcov)**0.5
         self.res = np.concatenate([self.params[:, None],
                                    self.SE[:, None]], axis=1)

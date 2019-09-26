@@ -7,23 +7,18 @@ Created on Wed Sep 11 18:59:05 2019
 """
 import pandas as pd
 import numpy as np
-from collections import defaultdict
-from numpy import kron, eye, dot, log, trace, diag, sqrt
-from scipy.stats import chi2 as chi2_dist, t as t_dist
-from scipy.optimize import minimize
-from numpy.linalg import inv, pinv, slogdet, det
-from ..utils.base_utils import check_type, corr, cov, center
-from ..utils.linalg_utils import (omat, jmat, kmat, nmat, lmat, dmat, pre_post_elim,
-                            diag2, mdot, mat_rconj, lstq_pred, lstq, vec, invec,
-                            vech, invech, vechc, xprod)
-from ..utils.statfunc_utils import fdr_bh
+import scipy as sp
+import scipy.optimize
+import scipy.stats
+import collections
+from ..utils import linalg_utils, base_utils, statfunc_utils
 
 class SEMModel:
     
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0):
-        Lmask = omat(*LA.shape)
+        Lmask = linalg_utils.omat(*LA.shape)
         Ltmp = LA.copy()
-        dfd = defaultdict(list) 
+        dfd = collections.defaultdict(list) 
         for val,key in zip(*np.where(Ltmp==1)): dfd[key].append(val) 
         for key in dfd.keys():
             Lmask[dfd[key][0], key] = 1
@@ -60,9 +55,9 @@ class SEMModel:
             for x in tmp[tmp!=0].index.values:
                 labels.append("resid(%s, %s)"%(x[1], x[0]))
         self.labels=labels
-        Z, self.zcols, self.zix, self.z_is_pd = check_type(Z)
-        LA, self.lcols, self.lix, self.l_is_pd = check_type(LA)
-        BE, self.bcols, self.bix, self.b_is_pd = check_type(BE)
+        Z, self.zcols, self.zix, self.z_is_pd = base_utils.check_type(Z)
+        LA, self.lcols, self.lix, self.l_is_pd = base_utils.check_type(LA)
+        BE, self.bcols, self.bix, self.b_is_pd = base_utils.check_type(BE)
         LA, idx1, BE, idx2, PH_i, idx3, TH_i, idx4 = self.init_params(Z, LA, BE, 
                                                                       TH, PH)
         if TH is None:
@@ -84,48 +79,49 @@ class SEMModel:
         self.p, self.k = p, k
         self.n_obs = Z.shape[0]
         self.Z = Z
-        self.S = cov(Z)
+        self.S = linalg_utils.cov(Z)
         self.LA = LA
         self.BE = BE
-        self.IB = inv(mat_rconj(BE))
+        self.IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
         self.PH = PH
         self.TH = TH
         self.idx = self.mat_to_params(idx1, idx2, idx3, idx4)
         self.params = self.mat_to_params(LA, BE, PH, TH)
         self.free = self.params[self.idx]
         self.Sigma = self.implied_cov(self.LA, self.BE, self.PH, self.TH)
-        self.GLSW = pre_post_elim(kron(inv(self.S), inv(self.S)))
-        self.Sinv = inv(self.S)
-        self.Lp = lmat(self.p)
-        self.Np = nmat(self.p)
-        self.Ip = eye(self.p)
-        self.Dk = dmat(self.k)
-        self.Dp = dmat(self.p)
-        self.Ip2 = eye(self.p**2)
+        self.GLSW = linalg_utils.pre_post_elim(np.kron(np.linalg.inv(self.S),
+                                                       np.linalg.inv(self.S)))
+        self.Sinv = np.linalg.inv(self.S)
+        self.Lp = linalg_utils.lmat(self.p)
+        self.Np = linalg_utils.nmat(self.p)
+        self.Ip = np.eye(self.p)
+        self.Dk = linalg_utils.dmat(self.k)
+        self.Dp = linalg_utils.dmat(self.p)
+        self.Ip2 = np.eye(self.p**2)
         
-        self.bounds = self.mat_to_params(omat(*self.LA.shape), 
-                                         omat(*self.BE.shape),
-                                         eye(self.PH.shape[0]),
-                                         eye(self.TH.shape[0]))
+        self.bounds = self.mat_to_params(linalg_utils.omat(*self.LA.shape), 
+                                         linalg_utils.omat(*self.BE.shape),
+                                         np.eye(self.PH.shape[0]),
+                                         np.eye(self.TH.shape[0]))
         self.bounds = self.bounds[self.idx]
         self.bounds = [(None, None) if x==0 else (0, None) for x in self.bounds]
         
         
     def init_params(self, Z, L, B, TH=None, PH=None):
-        BE_init = omat(*B.shape)
+        BE_init = linalg_utils.omat(*B.shape)
         BE_idx = B.copy().astype(bool)
-        LA_init = omat(*L.shape)
+        LA_init = linalg_utils.omat(*L.shape)
         if TH is None:
-            TH_init = diag2(cov(Z)) / 2
+            TH_init = linalg_utils.diag2(linalg_utils.cov(Z)) / 2
         else:
             TH_init = TH
         if PH is None:
-            PH_init = eye(B.shape[0])*0.05
-            PH_mask = eye(B.shape[0])
+            PH_init = np.eye(B.shape[0])*0.05
+            PH_mask = np.eye(B.shape[0])
         else:
             PH_init = PH
             PH_mask = PH!=0
-        dfd = defaultdict(list) 
+        dfd = collections.defaultdict(list) 
         for val,key in zip(*np.where(L==1)): dfd[key].append(val) 
     
         for key in dfd.keys():
@@ -141,8 +137,10 @@ class SEMModel:
             else:
                 exog = Z[:, LA_idx[:, i]]
                 endog = Z[:, LA_init[:, i].astype(bool)]
-                LA_init[LA_idx[:, i], [i]] = lstq(center(exog), center(endog)).flatten()
-                Nu.append(lstq_pred(center(exog), center(endog)))
+                LA_init[LA_idx[:, i], [i]] = linalg_utils.lstq(base_utils.center(exog), 
+                       base_utils.center(endog)).flatten()
+                Nu.append(linalg_utils.lstq_pred(base_utils.center(exog), 
+                                                 base_utils.center(endog)))
             
         Nu = np.concatenate(Nu, axis=1) 
         
@@ -152,30 +150,34 @@ class SEMModel:
             else:
                 exog = Nu[:, BE_idx[i]]
                 endog = Nu[:, i]
-            BE_init[i, BE_idx[i]] = lstq(center(exog), center(endog))
-        PH_init = cov(Nu)*PH_mask
+            BE_init[i, BE_idx[i]] = linalg_utils.lstq(base_utils.center(exog), 
+                   base_utils.center(endog))
+        PH_init = linalg_utils.cov(Nu)*PH_mask
         PH_idx = PH_mask
         TH_idx = TH_init!=0
         return LA_init, LA_idx, BE_init, BE_idx, PH_init, PH_idx, TH_init, TH_idx
 
   
     def implied_cov(self, LA, BE, PH, TH):
-        IB = inv(mat_rconj(BE))
-        Sigma = mdot([LA, IB, PH, IB.T, LA.T]) + TH
+        IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
+        Sigma = linalg_utils.mdot([LA, IB, PH, IB.T, LA.T]) + TH
         return Sigma
     
     def mat_to_params(self, LA, BE, PH, TH):
-        params = np.block([vec(LA), vec(BE), vech(PH), vech(TH)])
+        params = np.block([linalg_utils.vec(LA), 
+                           linalg_utils.vec(BE), 
+                           linalg_utils.vech(PH), 
+                           linalg_utils.vech(TH)])
         return params
   
     def get_mats(self, params=None):
         if params is None:
             params = self.params
-        LA = invec(params[:self.k1], self.p, self.k)
-        BE = invec(params[self.k1:self.k2], self.k, self.k)
-        IB = inv(mat_rconj(BE))
-        PH = invech(params[self.k2:self.k3])
-        TH = invech(params[self.k3:])
+        LA = linalg_utils.invec(params[:self.k1], self.p, self.k)
+        BE = linalg_utils.invec(params[self.k1:self.k2], self.k, self.k)
+        IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
+        PH = linalg_utils.invech(params[self.k2:self.k3])
+        TH = linalg_utils.invech(params[self.k3:])
         return LA, BE, IB, PH, TH
         
     def get_sigma(self, free):
@@ -192,12 +194,12 @@ class SEMModel:
             free = free[:, 0]
         Sigma = self.get_sigma(free)
         if method=='GLS':
-            d = vech(Sigma - self.S)
+            d = linalg_utils.vech(Sigma - self.S)
             V = self.GLSW
-            f = mdot([d.T, V, d])
+            f = linalg_utils.mdot([d.T, V, d])
         elif method=='ML':
-            lnd = slogdet(Sigma)[1]
-            f = lnd+trace(pinv(Sigma).dot(self.S))
+            lnd = np.linalg.slogdet(Sigma)[1]
+            f = lnd+np.trace(np.linalg.pinv(Sigma).dot(self.S))
         return f
     
     def gradient(self, free, method='GLS', full=False):
@@ -209,28 +211,37 @@ class SEMModel:
         params[self.idx] = free
         Sigma = self.get_sigma(free)
         LA, BE, IB, PH, TH = self.get_mats(params)
-        A = dot(LA, IB)
-        B = mdot([A, PH, IB.T])
+        A = np.dot(LA, IB)
+        B = linalg_utils.mdot([A, PH, IB.T])
         
         if method=='GLS':
-            DLambda = mdot([self.Lp, self.Np, kron(B, self.Ip)])
-            DBeta = -mdot([self.Lp, self.Np, kron(B, A)])
-            DPhi = mdot([self.Lp, kron(A, A), self.Dk])
-            DPsi = mdot([self.Lp, self.Ip2, self.Dp])
+            DLambda = linalg_utils.mdot([self.Lp, self.Np, np.kron(B, self.Ip)])
+            DBeta = -linalg_utils.mdot([self.Lp, self.Np, np.kron(B, A)])
+            DPhi = linalg_utils.mdot([self.Lp, np.kron(A, A), self.Dk])
+            DPsi = linalg_utils.mdot([self.Lp, self.Ip2, self.Dp])
             W = self.GLSW
             
             G = np.block([DLambda, DBeta, DPhi, DPsi])
-            g = -2*mdot([(vechc(self.S)-vechc(Sigma)).T, W, G])
+            g = -2*linalg_utils.mdot([(linalg_utils.vechc(self.S)\
+                                       -linalg_utils.vechc(Sigma)).T, W, G])
             
         elif method=='ML':
-            InvSigma = pinv(Sigma)
-            DLambda = vec(mdot([InvSigma, B]))-vec(mdot([InvSigma, self.S, InvSigma,
-                         B]))
-            DBeta = vec(mdot([A.T, InvSigma, B]))-vec(mdot([A.T, InvSigma,
+            InvSigma = np.linalg.pinv(Sigma)
+            DLambda = linalg_utils.vec(linalg_utils.mdot([InvSigma, B]))\
+                     -linalg_utils.vec(linalg_utils.mdot([InvSigma, self.S, 
+                                                          InvSigma, B]))
+    
+            DBeta = linalg_utils.vec(linalg_utils.mdot([A.T, InvSigma, B]))\
+                    -linalg_utils.vec(linalg_utils.mdot([A.T, InvSigma,
                           self.S, InvSigma, B]))
-            DPhi = vech(mdot([A.T, InvSigma, A])) - vech(mdot([A.T, InvSigma,
+    
+            DPhi = linalg_utils.vech(linalg_utils.mdot([A.T, InvSigma, A])) \
+                    - linalg_utils.vech(linalg_utils.mdot([A.T, InvSigma,
                        self.S, InvSigma, A]))
-            DPsi = vech(InvSigma) - vech(mdot([InvSigma, self.S, InvSigma]))
+    
+            DPsi = linalg_utils.vech(InvSigma)\
+                    - linalg_utils.vech(linalg_utils.mdot([InvSigma, self.S, 
+                                                           InvSigma]))
             
             g = np.concatenate([DLambda, DBeta, DPhi, DPsi])
             g = g[:, None].T
@@ -244,12 +255,12 @@ class SEMModel:
         params = self.params.copy()
         params[self.idx] = free
         LA, BE, IB, PH, TH = self.get_mats(params)
-        A = dot(LA, IB)
-        B = mdot([A, PH, IB.T])
-        DLambda = mdot([self.Lp, self.Np, kron(B, self.Ip)])
-        DBeta = mdot([self.Lp, self.Np, kron(B, A)])
-        DPhi = mdot([self.Lp, kron(A, A), self.Dk])
-        DPsi = mdot([self.Lp, self.Ip2, self.Dp])        
+        A = np.dot(LA, IB)
+        B = linalg_utils.mdot([A, PH, IB.T])
+        DLambda = linalg_utils.mdot([self.Lp, self.Np, np.kron(B, self.Ip)])
+        DBeta = linalg_utils.mdot([self.Lp, self.Np, np.kron(B, A)])
+        DPhi = linalg_utils.mdot([self.Lp, np.kron(A, A), self.Dk])
+        DPsi = linalg_utils.mdot([self.Lp, self.Ip2, self.Dp])        
         G = np.block([DLambda, DBeta, DPhi, DPsi])
         return G
     
@@ -258,94 +269,81 @@ class SEMModel:
         params[self.idx] = free
         Sigma = self.get_sigma(free)
         LA, BE, IB, PH, TH = self.get_mats(params)
-        A = dot(LA, IB)
-        B = mdot([A, PH, IB.T])
+        A = np.dot(LA, IB)
+        B = linalg_utils.mdot([A, PH, IB.T])
         if method=='GLS':
-            DLambda = mdot([self.Lp, self.Np, kron(B, self.Ip)])
-            DBeta = -mdot([self.Lp, self.Np, kron(B, A)])
-            DPhi = mdot([self.Lp, kron(A, A), self.Dk])
-            DPsi = mdot([self.Lp, self.Ip2, self.Dp])
+            DLambda = linalg_utils.mdot([self.Lp, self.Np, np.kron(B, self.Ip)])
+            DBeta = -linalg_utils.mdot([self.Lp, self.Np, np.kron(B, A)])
+            DPhi = linalg_utils.mdot([self.Lp, np.kron(A, A), self.Dk])
+            DPsi = linalg_utils.mdot([self.Lp, self.Ip2, self.Dp])
             W = self.GLSW
          
             G = np.block([DLambda, DBeta, DPhi, DPsi])
-            Sinv = pinv(self.S)
-            InvSigma = pinv(Sigma)
-            W = kron(Sinv, mdot([Sinv, self.S-Sigma, Sinv]))
-            W = pre_post_elim(W)
-            H = -2*mdot([G.T, W, G])
+            Sinv = np.linalg.pinv(self.S)
+            InvSigma = np.linalg.pinv(Sigma)
+            W = np.kron(Sinv, linalg_utils.mdot([Sinv, self.S-Sigma, Sinv]))
+            W = linalg_utils.pre_post_elim(W)
+            H = -2*linalg_utils.mdot([G.T, W, G])
         elif method=='ML':
-            DLambda = mdot([self.Lp, self.Np, kron(B, self.Ip)])
-            DBeta = -mdot([self.Lp, self.Np, kron(B, A)])
-            DPhi = mdot([self.Lp, kron(A, A), self.Dk])
-            DPsi = mdot([self.Lp, self.Ip2, self.Dp])
+            DLambda = linalg_utils.mdot([self.Lp, self.Np, np.kron(B, self.Ip)])
+            DBeta = -linalg_utils.mdot([self.Lp, self.Np, np.kron(B, A)])
+            DPhi = linalg_utils.mdot([self.Lp, np.kron(A, A), self.Dk])
+            DPsi = linalg_utils.mdot([self.Lp, self.Ip2, self.Dp])
             G = np.block([DLambda, DBeta, DPhi, DPsi])
-            Sinv = pinv(self.S)
-            InvSigma = pinv(Sigma)
-            ESE = mdot([InvSigma, self.S, InvSigma])
-            W = kron(InvSigma, ESE) + kron(ESE, InvSigma) - kron(InvSigma, InvSigma)
-            W = pre_post_elim(W)
-            H = -mdot([G.T, W, G])
+            Sinv = np.linalg.pinv(self.S)
+            InvSigma = np.linalg.pinv(Sigma)
+            ESE = linalg_utils.mdot([InvSigma, self.S, InvSigma])
+            W = np.kron(InvSigma, ESE) + np.kron(ESE, InvSigma) \
+                - np.kron(InvSigma, InvSigma)
+            W = linalg_utils.pre_post_elim(W)
+            H = -linalg_utils.mdot([G.T, W, G])
         return H[self.idx][:, self.idx]
 
     def einfo(self, free):
         params = self.params.copy()
         params[self.idx] = free
         Sigma = self.get_sigma(free)
-        Sinv = inv(Sigma)
-        D = dmat(Sinv.shape[0])
-        W = 2*mdot([D.T, kron(Sinv, Sinv), D])
+        Sinv = np.linalg.inv(Sigma)
+        D = linalg_utils.dmat(Sinv.shape[0])
+        W = 2*linalg_utils.mdot([D.T, np.kron(Sinv, Sinv), D])
         G = self.dsigma(free)[:, self.idx]
-        ncov = pinv(mdot([G.T, W, G]))
+        ncov = np.linalg.pinv(linalg_utils.mdot([G.T, W, G]))
         return ncov
     
     def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2):
-        self.optimizer = minimize(self.obj_func, self.free, 
+        self.optimizer = sp.optimize.minimize(self.obj_func, self.free, 
                                   args=('ML',), jac=self.gradient,
                                   hess=self.hessian, method='trust-constr',
-                                  bounds=self.bounds, options={'xtol':xtol, 
-                                                               'gtol':gtol,
-                                                               'maxiter':maxiter,
-                                                               'verbose':verbose})    
+                                  bounds=self.bounds,
+                                  options={'xtol':xtol, 'gtol':gtol,
+                                           'maxiter':maxiter,'verbose':verbose})    
         params = self.params.copy()
         params[self.idx] = self.optimizer.x           
         self.LA, self.BE, self.IB, self.PH, self.TH = self.get_mats(params)      
         self.free = self.optimizer.x      
         self.Sigma = self.get_sigma(self.free)
-        Sinv = pinv(self.Sigma)
-        W = pre_post_elim(kron(Sinv, Sinv))+np.outer(vech(Sinv), vech(Sinv))
+        Sinv = np.linalg.pinv(self.Sigma)
+        W = linalg_utils.pre_post_elim(np.kron(Sinv, Sinv))+np.outer(linalg_utils.vech(Sinv), 
+                          linalg_utils.vech(Sinv))
         Delta = self.dsigma(self.free)
-        W = mdot([Delta.T, W, Delta])[self.idx][:, self.idx]
-        self.SE_exp = 2*diag(self.einfo(self.free)/self.n_obs)**0.5
-        self.SE_obs = diag(inv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
-        self.SE_rob = diag(pinv(W) / self.n_obs)**0.5
+        W = linalg_utils.mdot([Delta.T, W, Delta])[self.idx][:, self.idx]
+        self.SE_exp = 2*np.diag(self.einfo(self.free)/self.n_obs)**0.5
+        self.SE_obs = np.diag(np.linalg.inv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
+        self.SE_rob = np.diag(np.linalg.pinv(W) / self.n_obs)**0.5
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
                                 columns=self.labels).T
         self.test_stat = (self.n_obs-1)*(self.obj_func(self.free, 'ML')\
-                         - slogdet(self.S)[1]-self.S.shape[0])
-        self.df = len(vech(self.S))-len(self.free)
-        self.test_pval = 1.0 - chi2_dist.cdf(self.test_stat, self.df)
+                         - np.linalg.slogdet(self.S)[1]-self.S.shape[0])
+        self.df = len(linalg_utils.vech(self.S))-len(self.free)
+        self.test_pval = 1.0 - sp.stats.chi2.cdf(self.test_stat, self.df)
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
-        self.res['p'] = 1 - t_dist.cdf(abs(self.res['t']), self.n_obs)
+        self.res['p'] = sp.stats.t.sf(abs(self.res['t']), self.n_obs)
         #self.res['adj p'] = fdr_bh(self.res['p'])
-        p  = self.S.shape[0]
-        normalized_resids = 0.0
-        SMSR = 0.0
-        s, sig = check_type(self.S)[0], check_type(self.Sigma)[0]
-        for i in range(self.S.shape[0]):
-            for j in range(self.S.shape[0]):
-                if i<=j:
-                    sigij, sigjj, sigii = sig[i,j], sig[j, j], sig[i, i]
-                    nrij = (s[i, j]-sigij)/sqrt((sigjj*sigii+sigij**2)/self.n_obs)
-                    normalized_resids+= nrij
-                    SMSR += (s[i, j] - sigij)**2 / (s[i, i]*s[j, j])
-        self.SMSR = sqrt(2*SMSR/(p*(p+1)))
-        self.normalized_resids = normalized_resids
-        V = pinv(self.Sigma)
-        Ip = eye(self.S.shape[0])
-        self.GFI = trace(xprod(dot(V, self.S)-Ip))/trace(xprod(dot(V, self.S)))
+        self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
+        self.GFI = statfunc_utils.gfi(self.Sigma, self.S)
         if self.df!=0:
-            self.AGFI = 1 - (p*(p+1)/self.df)*(1-self.GFI)
-            self.st_chi2 = (self.test_stat - self.df) / sqrt(2*self.df)
-            self.RMSEA = sqrt(np.maximum(self.test_stat-self.df, 
+            self.AGFI = statfunc_utils.agfi(self.Sigma, self.S, self.df)
+            self.st_chi2 = (self.test_stat - self.df) / np.sqrt(2*self.df)
+            self.RMSEA = np.sqrt(np.maximum(self.test_stat-self.df, 
                                      0)/(self.df*self.n_obs-1))      

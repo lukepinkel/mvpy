@@ -8,27 +8,21 @@ Created on Sat Sep 21 18:08:10 2019
 
 import pandas as pd
 import numpy as np
-from numpy import log, exp
-from patsy import dmatrices
-from collections import OrderedDict
-from numpy.linalg import pinv
-from scipy.linalg import block_diag
-from scipy.optimize import minimize
-from scipy.stats import t as t_dist, chi2 as chi2_dist
-from scipy.special import gammaln, digamma, polygamma
-from ..utils.base_utils import check_type
-from ..utils.linalg_utils import (einv, _check_1d, _check_0d, _check_np,
-                                   _check_2d)
-
-import scipy.stats as spstats
+import scipy as sp
+import scipy.optimize 
+import scipy.stats
+import scipy.special
+import patsy
+from ..utils import base_utils
+from ..utils import linalg_utils
 
 
 class MinimalGLM:
     
     def __init__(self, X, Y, fam):
         self.f = fam
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
+        self.X, self.xcols, self.xix, self.x_is_pd = base_utils.check_type(X)
+        self.Y, self.ycols, self.yix, self.y_is_pd = base_utils.check_type(Y)
         self.n_obs, self.n_feats = self.X.shape
         self.dfe = self.n_obs - self.n_feats
         self.jn = np.ones((self.n_obs, 1))
@@ -42,7 +36,7 @@ class MinimalGLM:
         T = self.f.canonical_parameter(mu)
         Z = self.f.cumulant(T)
         LL = (Y.T.dot(T) - jn.T.dot(Z)) / phi
-        return -_check_0d(LL)
+        return -linalg_utils._check_0d(LL)
     
     def gradient(self, params):
         beta, phi = self.f.unpack_params(params)
@@ -53,7 +47,7 @@ class MinimalGLM:
         V = self.f.var_func(T)
         Vinv =1.0/V
         W = Vinv * self.f.dinv_link(eta)
-        G = -(_check_1d(Y) - mu) * W
+        G = -(linalg_utils._check_1d(Y) - mu) * W
         g = X.T.dot(G)
         return g
     
@@ -69,7 +63,7 @@ class MinimalGLM:
         W1 = self.f.d2inv_link(eta)
         W2 = self.f.d2canonical(mu)
         
-        Psc = (_check_1d(Y)-mu) * (W2*W0+W1*Vinv)
+        Psc = (linalg_utils._check_1d(Y)-mu) * (W2*W0+W1*Vinv)
         Psb = Vinv*W0
         W = Psc - Psb
         
@@ -78,7 +72,7 @@ class MinimalGLM:
     
     def fit(self, verbose=2):
         theta = np.ones(self.X.shape[1])/2.0
-        optimizer = minimize(self.loglike, theta, jac=self.gradient, 
+        optimizer = sp.optimize.minimize(self.loglike, theta, jac=self.gradient, 
                              hess=self.hessian, method='trust-constr',
                              options={'verbose':0})
         self.optimizer = optimizer
@@ -103,9 +97,9 @@ class GLM:
         
         '''
         self.f = fam
-        Y, X = dmatrices(frm, data, return_type='dataframe')
-        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
-        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
+        Y, X = patsy.dmatrices(frm, data, return_type='dataframe')
+        self.X, self.xcols, self.xix, self.x_is_pd = base_utils.check_type(X)
+        self.Y, self.ycols, self.yix, self.y_is_pd = base_utils.check_type(Y)
         self.n_obs, self.n_feats = self.X.shape
         self.dfe = self.n_obs - self.n_feats
         self.jn = np.ones((self.n_obs, 1))
@@ -121,7 +115,7 @@ class GLM:
         T = self.f.canonical_parameter(mu)
         Z = self.f.cumulant(T)
         LL = (Y.T.dot(T) - jn.T.dot(Z)) / phi
-        return -_check_0d(LL)
+        return -linalg_utils._check_0d(LL)
     
     def gradient(self, params):
         beta, phi = self.f.unpack_params(params)
@@ -132,7 +126,7 @@ class GLM:
         V = self.f.var_func(T)
         Vinv =1.0/V
         W = Vinv * self.f.dinv_link(eta)
-        G = -(_check_1d(Y) - mu) * W
+        G = -(linalg_utils._check_1d(Y) - mu) * W
         g = X.T.dot(G)
         return g
     
@@ -149,7 +143,7 @@ class GLM:
         W2 = self.f.d2canonical(mu)
         
         
-        Psc = (_check_1d(Y)-mu) * (W2*W0+W1*Vinv)
+        Psc = (linalg_utils._check_1d(Y)-mu) * (W2*W0+W1*Vinv)
         Psb = Vinv*W0
         W = Psc - Psb
         
@@ -166,16 +160,16 @@ class GLM:
         self.intercept_model = intercept_model
         self.LL0 = intercept_model.loglike(intercept_model.beta)
         theta = self.theta_init
-        optimizer = minimize(self.loglike, theta, jac=self.gradient, 
+        optimizer = sp.optimize.minimize(self.loglike, theta, jac=self.gradient, 
                              hess=self.hessian, **optimizer_kwargs)        
         self.optimizer = optimizer
         self.beta = optimizer.x
         self.hess = self.hessian(self.beta)
         self.grad = self.gradient(self.beta)
-        self.vcov = einv(self.hess)
+        self.vcov = linalg_utils.einv(self.hess)
         self.beta_se = np.sqrt(np.diag(self.vcov))
         self.tvals = self.beta/self.beta_se
-        self.pvals = t_dist.sf(abs(self.tvals), self.dfe)*2.0
+        self.pvals = sp.stats.t.sf(abs(self.tvals), self.dfe)*2.0
         self.res = pd.DataFrame(np.vstack([self.beta, self.beta_se,
                                            self.tvals, self.pvals]).T, 
                                            index=self.xcols, 
@@ -186,13 +180,13 @@ class GLM:
         self.sst = np.var(self.Y)*self.Y.shape[0]
         n, p = self.X.shape[0], self.X.shape[1]
         yhat = self.predict()
-        y = _check_1d(self.Y)
+        y = linalg_utils._check_1d(self.Y)
         self.var_mu = self.f.var_func(self.f.canonical_parameter(yhat)).mean()
        
         self.ssr =np.sum((yhat - yhat.mean())**2)
         pt = y.mean()
         rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
-        rmax_an = -2*(pt*log(pt) + (1-pt)*log(1-pt))
+        rmax_an = -2*(pt*np.log(pt) + (1-pt)*np.log(1-pt))
         rmax_an = rmax_an / (1 + rmax_an)
      
         mu_p = yhat.mean()
@@ -209,7 +203,7 @@ class GLM:
         pseudo_r2['Tjur-res'] = 1 - (yhat * (1 - yhat)).sum() / (n*mu_p*(1 - mu_p))
         pseudo_r2['D'] = 0.5 * (pseudo_r2['Tjur-mod'] + pseudo_r2['Tjur-res'])
         self.pseudo_r2 = pseudo_r2
-        self.LLRp =  chi2_dist.sf(self.LLR, len(self.beta))
+        self.LLRp =  sp.stats.chi2.sf(self.LLR, len(self.beta))
         self.pearson_chi2 = self.sse / self.var_mu
         self.deviance = self.f.deviance(self.optimizer.x, self.X, self.Y)
         self.scale_chi2 = self.pearson_chi2 / (n-p)
@@ -218,7 +212,7 @@ class GLM:
         self.deviance_resid = np.sign(y - yhat) * np.sqrt(self.deviance)
         self.AIC = 2*self.LLA + 2*p
         self.AICC = 2*self.LLA + 2*p*n/(n-p-1)
-        self.BIC = 2*self.LLA + p*log(n)
+        self.BIC = 2*self.LLA + p*np.log(n)
         ix = ['LL Model', 'LL Intercept', 'LL Ratio', 'LLR p value', 
               'Pearson chi2', 'Deviance', 'AIC', 'AICC', 'BIC']
         self.sumstats = pd.DataFrame(
@@ -240,7 +234,7 @@ class GLM:
 class Bernoulli:
     
     def __init__(self, link='canonical'):
-        if link is 'canonical':
+        if link == 'canonical':
             self.link=LogitLink()
             self.type_='canonical'
         else:
@@ -272,7 +266,7 @@ class Bernoulli:
     
     def var_func(self, T):
         mu = self.mean_func(T)
-        V = _check_1d(mu * (1 - mu))
+        V =linalg_utils. _check_1d(mu * (1 - mu))
         return V
                 
     def d2canonical(self, mu):
@@ -285,7 +279,7 @@ class Bernoulli:
         return beta, phi
     
     def deviance(self, params, X, Y):
-        y = _check_1d(Y)
+        y = linalg_utils. _check_1d(Y)
         mu = self.inv_link(X.dot(params))
         lna, lnb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
         ixa, ixb = (y/mu)>0, ((1-y)/(1-mu))>0
@@ -303,7 +297,7 @@ class Bernoulli:
 class Poisson:
     
     def __init__(self, link='canonical'):
-        if link is 'canonical':
+        if link == 'canonical':
             self.link=LogLink()
             self.type_='canonical'
         else:
@@ -332,7 +326,7 @@ class Poisson:
     
     def var_func(self, T):
         mu = self.mean_func(T)
-        V = _check_1d(mu)
+        V = linalg_utils._check_1d(mu)
         return V
                 
     def d2canonical(self, mu):
@@ -344,7 +338,7 @@ class Poisson:
         return beta, phi
     
     def deviance(self, params, X, Y):
-        y = _check_1d(Y)
+        y = linalg_utils._check_1d(Y)
         mu = self.inv_link(X.dot(params))
         lna = np.zeros(y.shape[0])
         ixa = (y/mu)>0
@@ -356,7 +350,7 @@ class Poisson:
 class Gamma:
     
     def __init__(self, link='canonical'):
-        if link is 'canonical':
+        if link == 'canonical':
             self.link=ReciprocalLink()
             self.type_='canonical'
         else:
@@ -385,7 +379,7 @@ class Gamma:
     
     def var_func(self, T):
         mu = self.mean_func(T)
-        V = _check_1d(mu)**2
+        V = linalg_utils._check_1d(mu)**2
         return V
                 
     def d2canonical(self, mu):
@@ -398,7 +392,7 @@ class Gamma:
         return beta, phi
     
     def deviance(self, params, X, Y):
-        y = _check_1d(Y)
+        y = linalg_utils._check_1d(Y)
         mu = self.inv_link(X.dot(params))
         lna, lb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
         ixa, ixb = (y/mu)>0, mu!=0
@@ -435,16 +429,16 @@ class ProbitLink:
         self.fnc='probit'
         
     def inv_link(self, eta):
-        mu = spstats.norm.cdf(eta, loc=0, scale=1)
+        mu = sp.stats.norm.cdf(eta, loc=0, scale=1)
         mu[mu==1.0]-=1e-16
         return mu
     
     def dinv_link(self, eta):
-        dmu = spstats.norm.pdf(eta, loc=0, scale=1)
+        dmu = sp.stats.norm.pdf(eta, loc=0, scale=1)
         return dmu
         
     def d2inv_link(self, eta):
-        d2mu = -eta * spstats.norm.pdf(eta, loc=0, scale=1)
+        d2mu = -eta * sp.stats.norm.pdf(eta, loc=0, scale=1)
         return d2mu
 
 class LogLink:
