@@ -279,7 +279,13 @@ class LMM:
     res['Standard Error'] = np.concatenate([self.SE_theta, self.SE_b])
     self.res = res
     
-    
+  def predict(self, X=None, Z=None):
+      if X is None:
+          X = self.X
+      if Z is None:
+          Z = self.Z
+      return X.dot(self.b)+Z.dot(self.u)
+      
   
   def gradient(self, theta):
     '''

@@ -136,7 +136,7 @@ def polychorr(x, y, ret_optimizer=False):
     xtab = pd.crosstab(x, y).values
     a, b = thresh(xtab)
     k = len(a)
-    rinit =  np.corrcoef(x, y, rowvar=False)
+    rinit = np.array([np.corrcoef(x, y, rowvar=False)[0, 1]])
     
     params = np.concatenate([rinit, a, b], axis=0)
     ca =[dict(zip(['type', 'fun'], ['ineq', lambda params: params[i+1]-params[i]]))

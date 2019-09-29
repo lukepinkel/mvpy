@@ -17,9 +17,10 @@ from mvpy.api import LMM
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def initialize_lmm(n_units=50, n_unit_obs=5, n_levels=2, n_level_effects=2):
-    Sv = vine_corr(n_levels*n_level_effects, 2)
-    Se = vine_corr(n_levels, 2)
+def initialize_lmm(n_units=50, n_unit_obs=5, n_levels=2, n_level_effects=2, 
+                   beta_params_v=2, beta_params_e=2):
+    Sv = vine_corr(n_levels*n_level_effects, beta_params_v)
+    Se = vine_corr(n_levels, beta_params_e)
     
     Wv = eye(n_units)
     We = eye(n_units*n_unit_obs)
@@ -59,6 +60,34 @@ k = 0
 
 while i<200:
     fixed_effects, random_effects, yvar, data, Sv, Se = initialize_lmm()
+    model = LMM(fixed_effects, random_effects,  yvar, data)
+    true_params = np.concatenate([vech(Sv), vech(Se)])
+        
+    model.fit(verbose=0)
+    gtols.append([i, model.gnorm])
+    if model.gnorm<1e-6:
+        res = model.optimizer
+        #res2 = model.optimizer
+        #res = minimize(model.loglike, model.theta, bounds=model.bounds, 
+        #           options={'verbose':0, 'maxiter':100}, method='trust-constr')
+    
+         
+    
+        rc1 = np.concatenate([res.x[:, None], true_params[:, None]], axis=1)
+        #rc2 =  np.concatenate([res2.x[:, None], true_params[:, None]], axis=1)
+        RC1.append(rc1)
+        #RC2.append(rc2)
+        i+=1
+        print(i, "%4.E"%model.gnorm)
+    else:
+        k+=1
+        print(k)
+        continue
+
+
+while i<400:
+    fixed_effects, random_effects, yvar, data, Sv, Se = initialize_lmm(beta_params_v=5,
+                                                                       beta_params_e=10)
     model = LMM(fixed_effects, random_effects,  yvar, data)
     true_params = np.concatenate([vech(Sv), vech(Se)])
         
@@ -181,6 +210,14 @@ fig, ax = plt.subplots()
 
 fig, ax = plt.subplots()
 g = sns.pointplot(x='c', y=0, data=df1, join=False, estimator=np.median ,
+capsize=0.1)
+#g = sns.pointplot(x='c', y=0, hue='method', data=df, join=False,
+#              dodge=0.1, capsize=.1, estimator=np.median)
+g.axhline(0)
+
+
+fig, ax = plt.subplots()
+g = sns.pointplot(x='c', y=0, data=df1, join=False, estimator=np.mean ,
 capsize=0.1)
 #g = sns.pointplot(x='c', y=0, hue='method', data=df, join=False,
 #              dodge=0.1, capsize=.1, estimator=np.median)
