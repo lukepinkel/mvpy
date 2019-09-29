@@ -164,32 +164,86 @@ def polyserial_ll(rho, x, y, tau, order):
     ll = -np.sum(np.array(ll), axis=0)
     return ll
 
-def polyserial(x, y):
+
+def polychor_thresh(X):
     '''
-    Polyserial correlation.  Estimates the correlation coefficient
-    between a categorical and continuous variable, under the assumption
-    that the continuous variable is an arbitrarily thresholded normally
-    distributed variable
+    Maximum likelihood estimates for thresholds
     
     Parameters:
-        x: Continuous variable
-        y: Categorical variable
-        
+        X: crosstabulation table
     Returns:
-        rho_hat: Estimated correlation 
+        a: thresholds for axis 0
+        b: thresholds for axis 1
     '''
-    
-    order = dict(zip(np.unique(y), np.unique(y).argsort()))
+    N = float(np.sum(X))
+    a = norm_qtf(np.sum(X, axis=0).cumsum() / N)[:-1]
+    b = norm_qtf(np.sum(X, axis=1).cumsum() / N)[:-1]
+    a, b = np.concatenate([[-1e6], a, [1e6]]), np.concatenate([[-1e6], b, [1e6]])
+    return a, b
 
-    marginal_counts = np.array([np.sum(y==z) for z in np.unique(y)]).astype(float)
-    tau = norm_qtf(marginal_counts.cumsum()/marginal_counts.sum())
-    tau = np.concatenate([[-np.inf], tau])
+def polychor_probs(a, b, r):
+    '''
+    Cumulative bivariate normal distribution.  Computes the probability
+    that a value falls in category i,j
     
-        
-    res = minimize(polyserial_ll, x0=(corr(x, y)), args=(x, y, tau, order),
-                   method='Nelder-Mead')
-    rho_hat=res.x
-    return rho_hat
+    Parameters:
+        a: Thresholds along axis 0
+        b: Thresholds along axis 1
+        r: correlation coefficient
+    
+    Returns:
+        pr: Matrix of probabilities
+    '''
+    pr = np.array([[binorm_cdf(x, y, r) for x in a] for y in b])
+    return pr
+
+def polychor_loglike(X, a, b, r):
+    '''
+    Log likelihood of a contingency table given thresholds and  the correlation
+    coefficient
+    
+    Parameters:
+        X: Contigency table
+        a: Thresholds along axis 0
+        b: Thresholds along axis 1
+        r: correlation coefficient
+    Returns:
+        ll: Log likelihood
+    '''
+    pr = polychor_probs(a, b, r)
+    if len(pr.shape)>=3:
+        pr = pr[:, :, 0]
+    n, k = pr.shape
+    pr = np.array([[pr[i, j]+pr[i-1,j-1]-pr[i-1,j]-pr[i,j-1] 
+                   for j in range(1,k)] for i in range(1,n)])
+    ll = np.sum(X * log(pr))
+    return ll
+
+def normal_categorical(x, nx):
+    '''
+    Splits continuous variable into nx categories
+    
+    Parameters:
+        x: continuous vaiable in an array
+        nx: number of categories
+    
+    Returns:
+        xcat: categorical x
+    '''
+    xcat = pd.qcut(x, nx, labels=[i for i in range(nx)]).astype(float)
+    return xcat
+
+
+def polychor_ll(params, X, k):
+    rho = params[0]
+    a, b = params[1:k+1], params[k+1:]
+    return -polychor_loglike(X, a, b, rho)
+
+
+
+def polychor_partial_ll(rho, X, k, params):
+    a, b = params[:k], params[k:]
+    return -polychor_loglike(X, a, b, rho)
 
   
 def empirical_cdf(X):
