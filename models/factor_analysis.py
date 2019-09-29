@@ -535,7 +535,7 @@ class FactorAnalysis:
             self.Phi = eye(self.q)
         else:
             self.Phi = eye(self.q) + jmat(self.q, self.q) / 20.0 - eye(self.q)/20.0
-        self.Psi = eye(self.p)
+        self.Psi = np.diag((self.V**2)[:, :nfacs].sum(axis=1))
         if unit_var is True:
             Phi = self.Phi.copy() * 0.0
         else:
@@ -554,8 +554,8 @@ class FactorAnalysis:
         
     def p2m(self, params):
         Lambda = invec(params[:self.p*self.q], self.p, self.q)
-        Phi = invech(params[self.p*self.q:self.p*self.q+(self.q+1)*self.q/2])
-        Psi = invech(params[self.p*self.q+(self.q+1)*self.q/2:])
+        Phi = invech(params[int(self.p*self.q):int(self.p*self.q+(self.q+1)*self.q/2)])
+        Psi = invech(params[int(self.p*self.q+(self.q+1)*self.q/2):])
         return Lambda, Phi, Psi
     
     def loglike(self, free):
@@ -623,8 +623,9 @@ class FactorAnalysis:
         return J, pre_post_elim(Q0 + Q1)
     
     def fit(self, verbose=2, n_iters=2000, gtol=1e-8, xtol=1e-9):
+        #Hessian based optimization is less efficient
         optimizer = minimize(self.loglike, self.free, jac=self.gradient,
-                     hess=self.hessian, bounds=self.bounds,
+                     bounds=self.bounds, 
                      method='trust-constr', options={'verbose':verbose, 
                                                      'maxiter':n_iters,
                                                      'gtol':gtol, 
