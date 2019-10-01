@@ -14,18 +14,10 @@ import collections
 from ..utils import linalg_utils, base_utils, statfunc_utils
 
 class SEMModel:
-    '''
+    """
     Structural Equation Model
     
-    \eta = \eta B_{0} + \xi
-    z = \eta\Lambda + \epsilon
-    For B = I - B_{0}
-    \eta B = \xi
-    \eta = \xi B^{-1}
-    
-    E[\eta^{T}\eta] = B^{-1}E[\xi^{T}\xi]B^{-1}
-    E[z^{T}z] = \Lambda E[\eta^{T}\eta]\Lambda^{T}+E[\epsilon^{T}\epsilon]
-              = \Lambda B^{-1}\Phi\B^{-T}\Lambda^{T}+\Theta
+  
     
     The class is initialized with 2 Stage Least Squares parameter estimates,
     as the newton-raphson optimization is quite sensitive to starting values.
@@ -53,9 +45,8 @@ class SEMModel:
     PH: DataFrame
         Phi, the latent variable covariance matrix,  
     phk: numeric
-        Factor by which to divide the 2SLS estimate of Phi by.
-
-    '''
+        Factor by which to divide the 2SLS estimate of Phi by
+    """
     
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0):
         
@@ -359,6 +350,27 @@ class SEMModel:
         ncov = np.linalg.pinv(linalg_utils.mdot([G.T, W, G]))
         return ncov
     
+    def robust_cov(self, free):
+        mu = self.Z.mean(axis=0)
+        Y = linalg_utils._check_np(self.Z)
+        s = linalg_utils.vech(linalg_utils._check_np(self.S))
+        ss = [linalg_utils.vech((Y[i] - mu)[:, None].dot((Y[i]-mu)[:, None].T)) 
+              for i in range(Y.shape[0])]
+        Gadf = np.sum([(si-s)[:, None].dot((si-s)[:, None].T) for si in ss],
+                       axis=0)/Y.shape[0]
+        
+        Sigma = self.get_sigma(self.free)
+        Sinv = np.linalg.inv(Sigma)
+        D = linalg_utils.dmat(Sinv.shape[0])
+        W = 2*linalg_utils.mdot([D.T, np.kron(Sinv, Sinv), D])
+        G = self.dsigma(self.free)[:, self.idx]
+        V = np.linalg.pinv(linalg_utils.mdot([G.T, W, G]))
+        
+        Vrob = V.dot(linalg_utils.mdot([G.T, W, Gadf, W, G])).dot(V)
+        SE_rob = np.sqrt(np.diag(Vrob)/75.0)
+        return SE_rob
+
+    
     def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2):
         self.optimizer = sp.optimize.minimize(self.obj_func, self.free, 
                                   args=(method,), jac=self.gradient,
@@ -371,14 +383,10 @@ class SEMModel:
         self.LA, self.BE, self.IB, self.PH, self.TH = self.get_mats(params)      
         self.free = self.optimizer.x      
         self.Sigma = self.get_sigma(self.free)
-        Sinv = np.linalg.pinv(self.Sigma)
-        W = linalg_utils.pre_post_elim(np.kron(Sinv, Sinv))+np.outer(linalg_utils.vech(Sinv), 
-                          linalg_utils.vech(Sinv))
-        Delta = self.dsigma(self.free)
-        W = linalg_utils.mdot([Delta.T, W, Delta])[self.idx][:, self.idx]
+ 
         self.SE_exp = 2*np.diag(self.einfo(self.free)/self.n_obs)**0.5
         self.SE_obs = np.diag(np.linalg.pinv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
-        self.SE_rob = np.diag(np.linalg.pinv(W) / self.n_obs)**0.5
+        self.SE_rob = self.robust_cov(self.free)
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
                                 columns=self.labels).T
