@@ -367,8 +367,10 @@ class SEMModel:
         V = np.linalg.pinv(linalg_utils.mdot([G.T, W, G]))
         
         Vrob = V.dot(linalg_utils.mdot([G.T, W, Gadf, W, G])).dot(V)
-        SE_rob = np.sqrt(np.diag(Vrob)/75.0)
-        return SE_rob
+        W /= 4.0
+        U = W - W.dot(G).dot(np.linalg.inv(G.T.dot(W).dot(G)).dot(G.T).dot(W))
+        scale = np.trace(U.dot(Gadf))
+        return Vrob, scale
 
     
     def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2):
@@ -383,17 +385,22 @@ class SEMModel:
         self.LA, self.BE, self.IB, self.PH, self.TH = self.get_mats(params)      
         self.free = self.optimizer.x      
         self.Sigma = self.get_sigma(self.free)
- 
+        
         self.SE_exp = 2*np.diag(self.einfo(self.free)/self.n_obs)**0.5
         self.SE_obs = np.diag(np.linalg.pinv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
-        self.SE_rob = self.robust_cov(self.free)
+        Vrob, scale = self.robust_cov(self.free)
+        self.SE_rob = np.sqrt(np.diag(Vrob)/75.0)
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
                                 columns=self.labels).T
+        
         self.test_stat = (self.n_obs-1)*(self.obj_func(self.free, 'ML')\
                          - np.linalg.slogdet(self.S)[1]-self.S.shape[0])
         self.df = len(linalg_utils.vech(self.S))-len(self.free)
+        self.test_scale = scale / self.df
+        self.t_robust = self.test_stat / self.test_scale
         self.test_pval = 1.0 - sp.stats.chi2.cdf(self.test_stat, self.df)
+        self.robust_pval = sp.stats.chi2.sf(self.t_robust, self.df)
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
         self.res['p'] = sp.stats.t.sf(abs(self.res['t']), self.n_obs)
         #self.res['adj p'] = fdr_bh(self.res['p'])
@@ -403,4 +410,31 @@ class SEMModel:
             self.AGFI = statfunc_utils.agfi(self.Sigma, self.S, self.df)
             self.st_chi2 = (self.test_stat - self.df) / np.sqrt(2*self.df)
             self.RMSEA = np.sqrt(np.maximum(self.test_stat-self.df, 
-                                     0)/(self.df*self.n_obs-1))      
+                                     0)/(self.df*self.n_obs-1)) 
+        else:
+            self.AGFI = None
+            self.st_chi2 = None
+            self.RMSEA = None
+        
+        self.sumstats = [self.SRMR,
+                         self.GFI,
+                         self.AGFI,
+                         self.st_chi2,
+                         self.RMSEA,
+                         self.test_stat,
+                         self.test_pval,
+                         self.t_robust,
+                         self.robust_pval]
+        self.sumstats = pd.DataFrame(self.sumstats)
+        self.sumstats.index = ['SRMR', 'GFI', 'AGFI', 'chi2_st',
+                               'RMSEA', 'chi2', 'chi2_pval', 'chi2_robust',
+                               'chi2_robust_pval']
+        self.sumstats.columns=['Goodness_of_fit']
+        
+        
+        
+        
+        
+        
+        
+        
