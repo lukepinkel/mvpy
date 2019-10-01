@@ -17,6 +17,19 @@ class SEMModel:
     '''
     Structural Equation Model
     
+    \eta = \eta B_{0} + \xi
+    z = \eta\Lambda + \epsilon
+    For B = I - B_{0}
+    \eta B = \xi
+    \eta = \xi B^{-1}
+    
+    E[\eta^{T}\eta] = B^{-1}E[\xi^{T}\xi]B^{-1}
+    E[z^{T}z] = \Lambda E[\eta^{T}\eta]\Lambda^{T}+E[\epsilon^{T}\epsilon]
+              = \Lambda B^{-1}\Phi\B^{-T}\Lambda^{T}+\Theta
+    
+    The class is initialized with 2 Stage Least Squares parameter estimates,
+    as the newton-raphson optimization is quite sensitive to starting values.
+    
     Parameters
     ----------
     Z : DataFrame
@@ -26,9 +39,22 @@ class SEMModel:
         Lambda, the loadings matrix that specifies which variables load onto
         the latent variables.  For a path model(i.e. no measurement model)
         this can just be the identity matrix
-    BE:
-        
-    
+    BE: DataFrame
+        Beta, the matrix that specifies the structural relationships.  
+        Due to a suboptimality somewhere in the code, this does not exactly
+        reflect the matrix one would expect based off of a generative model,
+        and so each (i, j) element, which may be either boolean(True or False)
+        or binary (1, 0), specifies that variable i is explaining some variance
+        in variable j(i.e. i-->j)
+    TH: DataFrame
+        Theta, the measurement model error covariance matrix, analogous
+        to the uniqueness in factor analysis, except orthogonality is not
+        necessary
+    PH: DataFrame
+        Phi, the latent variable covariance matrix,  
+    phk: numeric
+        Factor by which to divide the 2SLS estimate of Phi by.
+
     '''
     
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0):
@@ -88,26 +114,27 @@ class SEMModel:
             TH = TH
         PH = PH_i/phk
         p, k = LA.shape
-        k1 = p * k
-        k2 = k * k
-        k3 = int((k + 1) * k / 2)
-        k4 = int((p + 1) * p / 2)
+        k1 = p * k #Number of Lambda params
+        k2 = k * k # Number of Beta params
+        k3 = int((k + 1) * k / 2) #Number of unique Phi params
+        k4 = int((p + 1) * p / 2) #Number of unique theta Params
         
+        #Cumulative sums
         k2 = k2 + k1
-        k3 =k2 + k3
+        k3 = k2 + k3
         k4 = k3 + k4 
         
         self.k1, self.k2, self.k3, self.k4 = k1, k2, k3, k4
         self.p, self.k = p, k
         self.n_obs = Z.shape[0]
         self.Z = Z
-        self.S = linalg_utils.cov(Z)
+        self.S = linalg_utils.cov(Z) #True covariance
         self.LA = LA
         self.BE = BE
         self.IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
         self.PH = PH
         self.TH = TH
-        self.idx = self.mat_to_params(idx1, idx2, idx3, idx4)
+        self.idx = self.mat_to_params(idx1, idx2, idx3, idx4) #Free parameter index
         self.params = self.mat_to_params(LA, BE, PH, TH)
         self.free = self.params[self.idx]
         self.Sigma = self.implied_cov(self.LA, self.BE, self.PH, self.TH)
