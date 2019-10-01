@@ -14,8 +14,30 @@ import collections
 from ..utils import linalg_utils, base_utils, statfunc_utils
 
 class SEMModel:
+    '''
+    Structural Equation Model
+    
+    Parameters
+    ----------
+    Z : DataFrame
+        Pandas DataFrame whose rows and columns correspond to observations
+        and variables, respectively.
+    LA : DataFrame
+        Lambda, the loadings matrix that specifies which variables load onto
+        the latent variables.  For a path model(i.e. no measurement model)
+        this can just be the identity matrix
+    BE:
+        
+    
+    '''
     
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0):
+        
+        if TH is not None:
+            TH = linalg_utils._check_np(TH)
+        if PH is not None:
+            PH = linalg_utils._check_np(PH)
+            
         Lmask = linalg_utils.omat(*LA.shape)
         Ltmp = LA.copy()
         dfd = collections.defaultdict(list) 
@@ -312,7 +334,7 @@ class SEMModel:
     
     def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2):
         self.optimizer = sp.optimize.minimize(self.obj_func, self.free, 
-                                  args=('ML',), jac=self.gradient,
+                                  args=(method,), jac=self.gradient,
                                   hess=self.hessian, method='trust-constr',
                                   bounds=self.bounds,
                                   options={'xtol':xtol, 'gtol':gtol,
@@ -328,7 +350,7 @@ class SEMModel:
         Delta = self.dsigma(self.free)
         W = linalg_utils.mdot([Delta.T, W, Delta])[self.idx][:, self.idx]
         self.SE_exp = 2*np.diag(self.einfo(self.free)/self.n_obs)**0.5
-        self.SE_obs = np.diag(np.linalg.inv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
+        self.SE_obs = np.diag(np.linalg.pinv(-self.hessian(self.free, 'ML'))/self.n_obs)**0.5
         self.SE_rob = np.diag(np.linalg.pinv(W) / self.n_obs)**0.5
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
