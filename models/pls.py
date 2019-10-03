@@ -8,6 +8,7 @@ Created on Wed Sep 11 19:55:37 2019
 
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from numpy import dot, sqrt, eye, diag, log, zeros
 from numpy.linalg import multi_dot, norm, pinv
 from scipy.stats import f as f_dist, chi2 as chi2_dist, t as t_dist
@@ -37,6 +38,7 @@ class PLSC:
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
         self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
         self.R = corr(X, Y)
+        self.n_obs = self.X.shape[0]
         
     def fit(self):
         
@@ -46,6 +48,7 @@ class PLSC:
         
         
         self.singular_values = singular_values
+        self.inertia = self.singular_values.sum()
         
         if self.x_is_pd is True:
             self.X_loadings = pd.DataFrame(X_loadings, index=self.xcols)
@@ -60,14 +63,22 @@ class PLSC:
         else:
             self.Y_loadings = Y_loadings
             self.Y_var = Y_var
+        self.permutation_test()
+        self.sumstats = pd.DataFrame([[self.inertia, self.permutation_pval]],
+                                     index=['Permutation Test'], 
+                                     columns=['Inertia', 'P-val'])
             
-    def permutation_test(self):
+    def permutation_test(self, n_permutations=1000):
         svs = []
-        for i in range(1000):
-            Rperm = corr(np.random.permutation(self.X.copy()), self.Y)
-            U, inertia, V = svd2(Rperm)
+        X, Y = self.X.copy(), self.Y.copy()
+        for i in range(n_permutations):
+            idx = np.random.permutation(self.n_obs)
+            R_perm = corr(X[idx], Y)
+            U, inertia, V = np.linalg.svd(R_perm, full_matrices=False)
             svs.append(inertia[:, None])
-        self.singular_value_dist = np.concatenate(svs, axis=2)
+        self.permuted_svds = np.concatenate(svs, axis=1).T
+        self.permuted_inertia = self.permuted_svds.sum(axis=1)
+        self.permutation_pval = (self.inertia<self.permuted_inertia).mean()+1e-16
         
     
     def bootstrap(self, n_boot=2000):
@@ -130,6 +141,15 @@ class CCA:
         self._wilks_stats()
         self._repackage()
         
+        corr_stats = self.rho
+        corr_stats['Wilks Lambda'] = self.wilks_lambda
+        corr_stats['Lawley Hotling'] = self.lawley_hotling
+        corr_stats['Pillai Trace'] = self.pillai 
+        corr_stats['chi2'] = self.chi2
+        corr_stats['chi2p'] = self.chi2p
+        corr_stats['F'] = self.F
+        corr_stats['Fp'] = self.Fp
+        self.sumstats = corr_stats
         
     def _fit_eig(self):
         
@@ -200,6 +220,21 @@ class CCA:
         self.chi2 = -(self.n_obs-0.5*(self.p+self.q+3))*log(self.wilks_lambda)
         self.chi2p = 1 - chi2_dist.cdf(self.chi2, self.p*self.q)
         self.Fp = 1 - f_dist.cdf(self.F, self.df1, self.df4)
+    
+    def plot_canvars(self, nx=1):
+        fig, ax = plt.subplots(nrows=nx)
+        for i in range(nx):
+            ax[i].scatter(self.X_var.iloc[:, i], self.Y_var.iloc[:, i],alpha=0.5)
+            txt = "$\\rho$=%4.3f; p=%4.4f"%(self.rho.iloc[0, i], self.Fp.iloc[i])
+            ax[i].annotate(txt, xytext=(-5, 5), xy=(1, 0), xycoords='axes fraction',
+                           textcoords='offset points', ha='right', va='bottom')
+            ymn, ymx = ax[i].get_ylim()
+            xmn, xmx = ax[i].get_xlim()
+            ax[i].set_ylim(ymn, ymx-0.2)
+            ax[i].set_xlim(xmn, xmx+0.5)
+        return fig, ax
+        
+    
         
  
 def simpls(X, Y, ncomps):
@@ -317,15 +352,15 @@ class PLSR:
         self.n_iters = n_iters
         self.tol = tol
         
-        if method is 'NIPALS':
+        if method == 'NIPALS':
             self.x_factors, self.x_loadings, self.y_factors, \
             self.y_loadings, self.coefs = nipals(self.X, self.Y, self.ncomps,
                                                  n_iters=n_iters, tol=tol)
-        elif method is 'SIMPLS':
+        elif method == 'SIMPLS':
             self.x_factors, self.x_loadings, self.y_factors, \
-            self.y_loadings,  self.coefs = simpls(self.X, self.Y, self.ncomps)
+            self.y_loadings,  self.coefs, self.obs_coefs = simpls(self.X, self.Y, self.ncomps)
             
-        elif method is 'W2A':
+        elif method == 'W2A':
             self.x_factors, self.y_factors, self.x_loadings, \
             self.y_loadings, self.coefs = pls_w2a(self.X, self.Y, self.ncomps, 
                                                   vocal=vocal)
@@ -353,63 +388,47 @@ class PLSR:
             n_nipals_iters = self.n_iters
         if tol is None:
             tol = self.tol
-        x_loading_samples = []
-        y_loading_samples = []
-        coef_samples = []
+        Mx, Vx = np.zeros(self.x_loadings.shape), np.zeros(self.x_loadings.shape)
+        My, Vy = np.zeros(self.y_loadings.shape), np.zeros(self.y_loadings.shape)
+        Mb, Vb =  np.zeros(self.coefs.shape), np.zeros(self.coefs.shape)
+        #Bsmp = []
         for i in range(n_samples):
             sample_ix = np.random.choice(self.n_obs, size=self.n_obs)
             X_samples = self.X[sample_ix]
             Y_samples = self.Y[sample_ix]
-            if method is 'NIPALS':
+            if method == 'NIPALS':
                 _, XL, _, YL, B = nipals(X_samples, Y_samples, self.ncomps,
                                            n_iters=n_nipals_iters, tol=tol)
-            elif method is 'SIMPLS':
-                _, XL, _, YL, B = simpls(X_samples, Y_samples,
+            elif method == 'SIMPLS':
+                _, XL, _, YL, B,_ = simpls(X_samples, Y_samples,
                                                    self.ncomps)
-            elif method is 'W2A':
+            elif method == 'W2A':
                 _, _, XL, YL, B = pls_w2a(X_samples, Y_samples, self.ncomps)
-                
-            x_loading_samples.append(XL[:, :, np.newaxis])
-            y_loading_samples.append(YL[:, :, np.newaxis])
-            coef_samples.append(B[:, :, np.newaxis])
+            n = i+1
+            if i==0:  
+                Mx += XL
+                My += YL
+                Mb += B
+            else:
+                if i>=2:
+                     c = (n-2) / (n - 1)
+                     Vx =  c * Vx + (XL - Mx + (XL - Mx) / n)**2 / n
+                     Vy =  c * Vy + (YL - My + (YL - My) / n)**2 / n
+                     Vb =  c * Vb + (B - Mb + (B - Mb) / n)**2 / n
+
+                Mx += (XL - Mx) / n
+                My += (YL - My) / n
+                Mb += (B - Mb) / n
+            #Bsmp.append(B)
+            self.boot_mean_LX, self.boot_mean_LY, self.boot_mean_B = Mx, My, Mb
+            self.boot_var_LX, self.boot_var_LY, self.boot_var_B = Vx, Vy, Vb
+            #self.Bsmp = Bsmp
             if vocal is True:
                 print(i)
-        
-        self.xl_samples = np.concatenate(x_loading_samples, axis=2)
-        self.yl_samples = np.concatenate(y_loading_samples, axis=2)
-        self.coef_samples = np.concatenate(coef_samples, axis=2)
-        
-        self.xl_mean = np.mean(self.xl_samples, axis=2)
-        self.yl_mean = np.mean(self.yl_samples, axis=2)
-        self.coef_mean = np.mean(self.coef_samples, axis=2)
-        
-        self.xl_confint_up = scoreatpercentile(self.xl_samples, CI, axis=2)
-        self.yl_confint_up = scoreatpercentile(self.yl_samples, CI, axis=2)
-        self.coef_confint_up = scoreatpercentile(self.coef_samples, CI, axis=2)
-    
-        self.xl_confint_low = scoreatpercentile(self.xl_samples,
-                                                100-CI, axis=2)
-        
-        self.yl_confint_low = scoreatpercentile(self.yl_samples,
-                                                100-CI, axis=2)
-        
-        self.coef_confint_low = scoreatpercentile(self.coef_samples,
-                                                  100.0-CI, axis=2)        
-        self.boostrap_tcrit = t_dist.ppf(CI/100.0, n_samples-2)
-        self.xl_se = np.std(self.xl_samples, axis=2)
-        self.yl_se = np.std(self.yl_samples, axis=2)
-        self.coef_se=np.std(self.coef_samples, axis=2)
-        
-        self.xl_tvalue = self.xl_mean / self.xl_se
-        self.yl_tvalue = self.yl_mean / self.yl_se
-        self.coef_tvalue = self.coef_mean / self.coef_se 
-        
-        if self.x_is_pd or self.y_is_pd:
-            self.coef_tvalue = pd.DataFrame(self.coef_tvalue,
-                                            index=self.xcols, 
-                                            columns=self.ycols)
+
             
             
+        
    
 
         
