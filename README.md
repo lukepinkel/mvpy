@@ -25,5 +25,7 @@ Currently includes rough implementations of
 
 Although all of these have been tested against results published in the literature, or those obtained in R(in some cases transitively via statsmodels), they have not been tested systematically, and some of the code is very rough.
 
-The cumulative link model is planned to be subsumed by a GLM module, while the factor analytic methods, latent variable correlation methods, and structural equation models are planned to be implemented under a general latent variable model.  
+The cumulative link model is planned to be subsumed by a GLM module, while the factor analytic methods, latent variable correlation methods, and structural equation models are planned to be implemented under a general latent variable model. 
+
+The partial least squares functions (generally with the exception of PLS-SEM) suffer from a variety of issues, and inconsistencies, as they were programmed with large gaps in between them, and PLSR, PLSC, and CCA may be subsumed by a more coherent model.
 
