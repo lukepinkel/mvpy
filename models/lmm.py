@@ -19,13 +19,13 @@ from scipy.optimize import minimize
 from ..utils.data_utils import dummy_encode
 from ..utils.linalg_utils import (khatri_rao, vech, invech, vecc, dmat, kronvec_mat,
                             _check_np, chol, _check_1d, woodbury_inversion,
-                            einv)
+                            einv, _check_2d, vec)
 
 
 class LMM:
   
   def __init__(self, fixed_effects, random_effects,  yvar, data, 
-               error_structure=None):
+               error_structure=None, acov=None):
     '''
     Linear Mixed Model
     
@@ -74,13 +74,20 @@ class LMM:
       Zi = khatri_rao(Ji.T, Zij.T).T
       Z.append(Zi)
       k = Zij.shape[1]*n_vars
+      if (acov is not None):
+          if acov[key] is not None:
+               acov_i = acov[key]
+          else:
+              acov_i = eye(Ji.shape[1])
+      else:
+          acov_i = eye(Ji.shape[1])
       re_struct[key] = {'n_units':Ji.shape[1],
                         'n_level_effects':Zij.shape[1],
                         'cov_re_dims':k,
-                        'n_params':((k+1)*k)/2,
+                        'n_params':((k + 1.0) * k) / 2.0,
                         'vcov':eye(k),
                         'params':vech(eye(k)),
-                        'acov':eye(Ji.shape[1])}
+                        'acov':acov_i}
         
     Z = np.concatenate(Z, axis=1)
     
@@ -116,7 +123,6 @@ class LMM:
       Zs[key] = sps.csc_matrix(Z[:, partitions2[i]:partitions2[i+1]])
       ZoZ[key] = sps.csc_matrix(sps.kron(Zs[key], Zs[key]))
     
-    #Need to redo this section for multiple random effects
     deriv_mats = OrderedDict()
     for key in var_struct.keys():
       Sv_shape, Av = var_struct[key]
@@ -144,7 +150,7 @@ class LMM:
     self.ZoZ = ZoZ
     
     
-    self.n_vars=n_vars
+    self.n_vars = n_vars
     self.XZY = np.block([X, Z, y])
     self.XZ = np.block([X, Z])
     self.A = np.block([[X, Z], [zeros((Z.shape[1], X.shape[1])),
@@ -162,7 +168,6 @@ class LMM:
     theta: array
       Vector containing relavent model terms
     '''
-    #May need to split up for effeciency
     if theta is None:
       theta=self.theta
     partitions=self.partitions
@@ -317,6 +322,7 @@ class LMM:
     dP = P.reshape(np.product(P.shape), 1, order='F')
     Py = P.dot(y)
     PyPy = kron(Py, Py)
+    #PyPy = vec(_check_2d(Py).dot(_check_2d(Py).T))[:, None] effecient only at large heterogenous n
     g = []
     for key in deriv_mats.keys():
         JF_Omega = deriv_mats[key]
@@ -334,6 +340,7 @@ class LMM:
     XtW = X.T.dot(W)
     XtWX_inv = einv(XtW.dot(X))
     P = W - XtW.T.dot(XtWX_inv).dot(XtW)
+    #P = W - np.linalg.multi_dot([XtW.T, XtWX_inv, XtW])
     Py = P.dot(y)
     H = []
     for i, Ji in enumerate(jac_mats):
