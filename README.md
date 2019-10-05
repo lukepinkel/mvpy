@@ -29,3 +29,4 @@ The cumulative link model is planned to be subsumed by a GLM module, while the f
 
 The partial least squares functions (generally with the exception of PLS-SEM) suffer from a variety of issues, and inconsistencies, as they were programmed with large gaps in between them, and PLSR, PLSC, and CCA may be subsumed by a more coherent model.
 
+Math outlining the basis and details of the implementation of multivariate mixed linear models can be viewed https://www.overleaf.com/read/kwfwwnsrybtk
