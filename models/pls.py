@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 """
@@ -141,7 +142,7 @@ class CCA:
         self._wilks_stats()
         self._repackage()
         
-        corr_stats = self.rho
+        corr_stats = self.rho.copy()
         corr_stats['Wilks Lambda'] = self.wilks_lambda
         corr_stats['Lawley Hotling'] = self.lawley_hotling
         corr_stats['Pillai Trace'] = self.pillai 
@@ -150,6 +151,20 @@ class CCA:
         corr_stats['F'] = self.F
         corr_stats['Fp'] = self.Fp
         self.sumstats = corr_stats
+        
+    def _boot_fit(self, X, Y):
+        Sx, Sy = cov(X), cov(Y)
+        Sxy = cov(X, Y)
+        Sxisq = inv_sqrth(Sx)
+        Syisq = inv_sqrth(Sy)
+        K = multi_dot([Sxisq, Sxy, Syisq])
+        U, S, V = svd2(K)
+        X_coefs = dot(Sxisq, U)
+        Y_coefs = dot(Syisq, V)
+        rho = S
+        X_loadings = Sx.dot(X_coefs)
+        Y_loadings = Sy.dot(Y_coefs)
+        return X_loadings, Y_loadings, rho
         
     def _fit_eig(self):
         
@@ -225,7 +240,7 @@ class CCA:
         fig, ax = plt.subplots(nrows=nx)
         for i in range(nx):
             ax[i].scatter(self.X_var.iloc[:, i], self.Y_var.iloc[:, i],alpha=0.5)
-            txt = "$\\rho$=%4.3f; p=%4.4f"%(self.rho.iloc[0, i], self.Fp.iloc[i])
+            txt = "$\\rho$=%4.3f; p=%4.4f"%(self.rho.iloc[i, 0], self.Fp.iloc[i])
             ax[i].annotate(txt, xytext=(-5, 5), xy=(1, 0), xycoords='axes fraction',
                            textcoords='offset points', ha='right', va='bottom')
             ymn, ymx = ax[i].get_ylim()
@@ -233,7 +248,41 @@ class CCA:
             ax[i].set_ylim(ymn, ymx-0.2)
             ax[i].set_xlim(xmn, xmx+0.5)
         return fig, ax
-        
+    
+    def bootstrap(self, n_samples=1000, vocal=True):
+        Mx, Vx = np.zeros(self.X_loadings.shape), np.zeros(self.X_loadings.shape)
+        My, Vy = np.zeros(self.Y_loadings.shape), np.zeros(self.Y_loadings.shape)
+        Mb, Vb =  np.zeros((self.rho.shape[0], self.rho.shape[0])), \
+                  np.zeros((self.rho.shape[0], self.rho.shape[0]))
+        #Bsmp = []
+        for i in range(n_samples):
+            sample_ix = np.random.choice(self.n_obs, size=self.n_obs)
+            X_samples = self.X[sample_ix]
+            Y_samples = self.Y[sample_ix]
+            XL, YL, B = self._boot_fit(X_samples, Y_samples)
+            n = i+1
+            if i==0:  
+                Mx += XL
+                My += YL
+                Mb += B
+            else:
+                if i>=2:
+                     c = (n-2) / (n - 1)
+                     Vx =  c * Vx + (XL - Mx + (XL - Mx) / n)**2 / n
+                     Vy =  c * Vy + (YL - My + (YL - My) / n)**2 / n
+                     Vb =  c * Vb + (B - Mb + (B - Mb) / n)**2 / n
+    
+                Mx += (XL - Mx) / n
+                My += (YL - My) / n
+                Mb += (B - Mb) / n
+            #Bsmp.append(B)
+            self.boot_mean_LX, self.boot_mean_LY, self.boot_mean_B = Mx, My, Mb
+            self.boot_var_LX, self.boot_var_LY, self.boot_var_B = Vx, Vy, Vb
+            #self.Bsmp = Bsmp
+            if vocal is True:
+                print(i)
+    
+                
     
         
  
@@ -623,5 +672,100 @@ class PLS_SEM:
         if self.is_pds[0]:
             self.mv_rsquared = pd.DataFrame(self.mv_rsquared, index=cols)
             
+  
+
+class sCCA:
+    def __init__(self, X, Y, mu=10.0, lx=0.5, ly=0.5): #analysis:ignore
+        self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
+        self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
+        
+        
+        n, p = self.X.shape
+        n, q = self.Y.shape
+        wx, wy = np.ones(p), np.ones(q)
+        wx /= np.linalg.norm(self.X.dot(wx))
+        wy /= np.linalg.norm(self.Y.dot(wy))
+        Bx, By = self._get_bmat(self.X, n, p, mu), self._get_bmat(self.Y, n, q, mu)
+        
+        self.mu = mu 
+        self.Bx, self.By = Bx, By  
+        self.lx, self.ly = lx, ly
+        self.ax, self.ay = np.ones(p)*lx, np.ones(q)*ly
+        self.k = np.minimum(p, q)
+        self.n, self.p, self.q = n, p, q
+        self.wx, self.wy = wx, wy
+        self.w = np.concatenate([wx, wy])
+        self.xprod = self.X.T.dot(self.Y)
+        
+        
+    def _get_bmat(self, X, n, p, mu): #analysis:ignore
+        if p>n:
+            Ip = np.eye(p)
+            In = np.eye(n)
+            Bx = Ip/mu - X.T.dot(np.linalg.inv(In*mu+X.dot(X.T))).dot(X) / mu
+        elif p<=n:
+            Ip = np.eye(p)
+            Bx = np.linalg.inv(Ip*mu+X.T.dot(X))
+        return Bx
+        
+    def _soft(self, y, tau):
+        psi_y = np.sign(y) * np.maximum(np.abs(y) - tau, 0)
+        return psi_y
+    
+    def admm(self, X=None, Y=None, n_iters=1000, tol=1e-5, vocal=True):
+        if X is None:
+            X = self.X
+        if Y is None:
+            Y = self.Y
+        n, p, q, mu = self.n, self.p, self.q, self.mu
+        xprod = X.T.dot(Y)
+        wx, wy = np.ones(p), np.ones(q)
+        wx /= np.linalg.norm(X.dot(wx))
+        wy /= np.linalg.norm(Y.dot(wy))
+        
+        ax, ay =  self.ax, self.ay
+        Bx, By =  self._get_bmat(X, n, p, mu), self._get_bmat(Y, n, q, mu)
+        dx, dy = wx.copy(), wy.copy()
+        epsilon = np.inf
+        
+        mu, m2 = self.mu, self.mu*2.0
+        for i in range(n_iters):
+            vxk, vyk = self._soft(wx - dx, ax/m2), self._soft(wy - dy, ay/m2)
+            wxk = Bx.dot(xprod.dot(wy)+mu*(vxk+dx))
+            wyk = By.dot(xprod.T.dot(wx)+mu*(vyk+dy))
             
+            wxk/=np.linalg.norm(X.dot(wxk))
+            wyk/=np.linalg.norm(Y.dot(wyk))
+            
+            dx = dx - wxk + vxk
+            dy = dy - wyk + vyk
+            
+            epsilon = np.linalg.norm(wxk - wx) + np.linalg.norm(wyk - wy)
+            if epsilon < tol:
+                break
+            else:
+                wx, wy = wxk, wyk
+            if vocal is True:
+                print(i)
+        return wx, wy
+    
+    def fit(self, n_comps=None):
+        if n_comps is None:
+            n_comps = self.k
+        Xv, Yv = self.X.copy(), self.Y.copy()
+        U, V = np.zeros((n_comps, self.p)), np.zeros((n_comps, self.q))
+        for i in range(n_comps):
+            if i>0:
+                tx, ty = Xv.dot(wx[:, None]), Yv.dot(wy[:, None]) #analysis:ignore
+                px, py = Xv.T.dot(tx)/np.dot(tx.T, tx), Yv.T.dot(ty)/np.dot(ty.T, ty)
+                Xv = Xv - tx.dot(px.T)#analysis:ignore
+                Yv = Yv - ty.dot(py.T)#analysis:ignore
+            wx, wy = self.admm(Xv, Yv, vocal=False)
+            U[i] = wx
+            V[i] = wy
+        self.U, self.V = U, V
+            
+            
+            
+                  
            
