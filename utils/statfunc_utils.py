@@ -13,9 +13,10 @@ from numpy import log, exp, sqrt, eye, dot, trace, pi
 from numpy.linalg import slogdet, pinv
 from scipy.special import erf, erfinv
 from scipy.stats import chi2 as chi2_dist
-from scipy.optimize import minimize
+from scipy.optimize import minimize #analysis:ignore
 
-from .base_utils import corr, check_type
+from .base_utils import corr, check_type #analysis:ignore
+from .linalg_utils import _check_1d, _check_np
 
 def norm_pdf(x, mu=0, s=1):
     '''
@@ -268,8 +269,9 @@ def empirical_cdf(X):
 
 def fdr_bh(p_values):
     p_values, cols, ix, is_pd = check_type(p_values)
+    p_values = _check_1d(p_values)
     idx = np.argsort(p_values)
-    correction = empirical_cdf(p_values[idx])
+    correction = _check_1d(_check_np(empirical_cdf(p_values[idx])))
     p_values[idx] /= correction
     
     if is_pd:

@@ -8,13 +8,17 @@ Created on Wed Sep 11 23:25:20 2019
 
 import numpy as np
 import pandas as pd
+import scipy.stats
+import scipy as sp
 
 from collections import OrderedDict
 from patsy import dmatrices
 from numpy.linalg import pinv
 from scipy.stats import t as t_dist
-from ..utils.linalg_utils import einv, _check_np, _check_1d, _check_2d
 
+from ..utils.linalg_utils import einv, _check_np, _check_1d, _check_2d
+from ..utils.base_utils import corr, valid_overlap
+from ..utils.statfunc_utils import fdr_bh
 class LM:
     
     def __init__(self, formula, data):
@@ -82,6 +86,66 @@ class LM:
         dev = 0.5
         ll = k + ldt + dev
         return ll
+    
+class MassUnivariate:
+    
+    def __init__(self, X, Y):
+        
+      R = corr(X, Y)
+      Z = pd.concat([X, Y], axis=1)
+      u, V = np.linalg.eigh(corr(Z))
+      u = u[::-1]
+      eigvar = np.sum((u - 1.0)**2) / (len(u) - 1.0)
+      
+      m_eff1 = 1 + (len(u) - 1.0) * (1 - eigvar / len(u))
+      m_eff2 = np.sum(((u>1.0)*1.0 + (u - np.floor(u)))[u>0])
+      m_eff3 = np.sum((u.cumsum() / u.sum())<0.99)
+      
+      N = valid_overlap(X, Y)
+      df = N - 2
+      t_values = R * np.sqrt(df / np.maximum((1 - R**2), 1e-16))
+      p_values = pd.DataFrame(sp.stats.t.sf(abs(t_values), df)*2.0, index=X.columns,
+                              columns=Y.columns)
+      minus_logp = pd.DataFrame(-sp.stats.norm.logsf(abs(t_values))/2.0, index=X.columns,
+                                columns=Y.columns)
+      res = pd.concat([R.stack(), t_values.stack(), p_values.stack(),
+                       minus_logp.stack()], axis=1)
+      res.columns = ['correlation', 't_value', 'p_value', 'minus_logp']
+      res['p_fdr'] = fdr_bh(res['p_value'].values)
+      res['p_meff1_sidak'] = 1.0 - (1.0 - res['p_value'])**m_eff1
+      res['p_meff2_sidak'] = 1.0 - (1.0 - res['p_value'])**m_eff2
+      res['p_meff3_sidak'] = 1.0 - (1.0 - res['p_value'])**m_eff3
+      
+      res['p_meff1_bf'] = np.minimum(res['p_value']*m_eff1, 0.5-1e-16)
+      res['p_meff2_bf'] = np.minimum(res['p_value']*m_eff2, 0.5-1e-16)
+      res['p_meff3_bf'] = np.minimum(res['p_value']*m_eff3, 0.5-1e-16)
+      
+      self.m_eff1, self.m_eff2, self.m_eff3 = m_eff1, m_eff2, m_eff3
+      self.X, self.Y = X, Y
+      self.R, self.N, self.df = R, N, df
+      self.eigvals, self.eigvecs = u, V
+      self.t_values, self.p_values, self.minus_logp = t_values, p_values, minus_logp
+      self.res = res
+     
+        
+
+
+
+    
+      
+      
+      
+      
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
 
     
     
