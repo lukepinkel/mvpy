@@ -1,0 +1,3 @@
+dist/
+Build
+.DS_store
