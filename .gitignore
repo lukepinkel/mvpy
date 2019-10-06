@@ -2,5 +2,7 @@
 *.DS_Store
 *test_lmm.py
 *tests.py
-build
-dist
+build/
+dist/
+*.egg-info/
+PKG-INFO
