@@ -674,23 +674,20 @@ class PLS_SEM:
             
   
 
+
 class sCCA:
-    def __init__(self, X, Y, mu=10.0, lx=0.5, ly=0.5): #analysis:ignore
+    def __init__(self, X, Y): #analysis:ignore
         self.X, self.xcols, self.xix, self.x_is_pd = check_type(X)
         self.Y, self.ycols, self.yix, self.y_is_pd = check_type(Y)
-        
+       
         
         n, p = self.X.shape
         n, q = self.Y.shape
         wx, wy = np.ones(p), np.ones(q)
         wx /= np.linalg.norm(self.X.dot(wx))
         wy /= np.linalg.norm(self.Y.dot(wy))
-        Bx, By = self._get_bmat(self.X, n, p, mu), self._get_bmat(self.Y, n, q, mu)
         
-        self.mu = mu 
-        self.Bx, self.By = Bx, By  
-        self.lx, self.ly = lx, ly
-        self.ax, self.ay = np.ones(p)*lx, np.ones(q)*ly
+        self.ax, self.ay = np.ones(p), np.ones(q)
         self.k = np.minimum(p, q)
         self.n, self.p, self.q = n, p, q
         self.wx, self.wy = wx, wy
@@ -712,23 +709,30 @@ class sCCA:
         psi_y = np.sign(y) * np.maximum(np.abs(y) - tau, 0)
         return psi_y
     
-    def admm(self, X=None, Y=None, n_iters=1000, tol=1e-5, vocal=True):
+    def admm(self, X=None, Y=None, n_iters=1000, tol=1e-5, vocal=True,
+             lx=None, ly=None, mu=None):
+        if mu is None:
+            mu = 10.0
+        if lx is None:
+            lx = 0.5
+        if ly is None:
+            ly = 0.5
         if X is None:
             X = self.X
         if Y is None:
             Y = self.Y
-        n, p, q, mu = self.n, self.p, self.q, self.mu
+        n, p, q = X.shape[0], X.shape[1], Y.shape[1]
         xprod = X.T.dot(Y)
         wx, wy = np.ones(p), np.ones(q)
         wx /= np.linalg.norm(X.dot(wx))
         wy /= np.linalg.norm(Y.dot(wy))
         
-        ax, ay =  self.ax, self.ay
+        ax, ay =  self.ax*lx, self.ay*ly
         Bx, By =  self._get_bmat(X, n, p, mu), self._get_bmat(Y, n, q, mu)
         dx, dy = wx.copy(), wy.copy()
         epsilon = np.inf
         
-        mu, m2 = self.mu, self.mu*2.0
+        m2 = mu*2.0
         for i in range(n_iters):
             vxk, vyk = self._soft(wx - dx, ax/m2), self._soft(wy - dy, ay/m2)
             wxk = Bx.dot(xprod.dot(wy)+mu*(vxk+dx))
@@ -749,7 +753,7 @@ class sCCA:
                 print(i)
         return wx, wy
     
-    def fit(self, n_comps=None):
+    def fit(self, n_comps=None, lx=None, ly=None, mu=None):
         if n_comps is None:
             n_comps = self.k
         Xv, Yv = self.X.copy(), self.Y.copy()
@@ -760,12 +764,77 @@ class sCCA:
                 px, py = Xv.T.dot(tx)/np.dot(tx.T, tx), Yv.T.dot(ty)/np.dot(ty.T, ty)
                 Xv = Xv - tx.dot(px.T)#analysis:ignore
                 Yv = Yv - ty.dot(py.T)#analysis:ignore
-            wx, wy = self.admm(Xv, Yv, vocal=False)
+            wx, wy = self.admm(Xv, Yv, vocal=False, lx=lx, ly=ly, mu=mu)
             U[i] = wx
             V[i] = wy
         self.U, self.V = U, V
+    
+    def _fit(self, X, Y, n_comps=None, lx=None, ly=None, mu=None):
+        if n_comps is None:
+            n_comps = self.k
+        Xv, Yv = X.copy(), Y.copy()
+        U, V = np.zeros((n_comps, self.p)), np.zeros((n_comps, self.q))
+        for i in range(n_comps):
+            if i>0:
+                tx, ty = Xv.dot(wx[:, None]), Yv.dot(wy[:, None]) #analysis:ignore
+                px, py = Xv.T.dot(tx)/np.dot(tx.T, tx), Yv.T.dot(ty)/np.dot(ty.T, ty)
+                Xv = Xv - tx.dot(px.T)#analysis:ignore
+                Yv = Yv - ty.dot(py.T)#analysis:ignore
+            wx, wy = self.admm(Xv, Yv, vocal=False, lx=lx, ly=ly, mu=mu)
+            U[i] = wx
+            V[i] = wy
+        return U, V
+    
+    def cross_val(self,  mu_range=None, reg_params=None, split_ratio=.7,
+                  n_iters=100, n_comps=None):
+        if mu_range is None:
+            mu_range = np.arange(1.0, 20, 2)
+        if reg_params is None:
+            reg_params = np.arange(0.05, 2.0, 0.1)
+        X, Y = self.X, self.Y
+        xvals_mu = []
+        m = np.round(split_ratio*self.n)
+        for i in range(n_iters):
+            idx = np.zeros(self.n)
+            ix = np.random.choice(self.n, int(m), replace=False)
+            idx[ix] = 1.0
+            idx = idx.astype(bool)
+            Xtr, Ytr = X[idx], Y[idx]
+            Xte, Yte = X[1-idx], Y[1-idx]
+            xvals_mu_i = []
+            for mu_k in mu_range:
+                U, V = self._fit(Xtr, Ytr, n_comps=n_comps, mu=mu_k)
+                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
+                xvals_mu.append(r)
+            xvals_mu.append(xvals_mu_i)
+        xvals_mu = np.array(xvals_mu)
+        
+        xvals_reg = []
+        for i in range(n_iters):
+            idx = np.zeros(self.n)
+            ix = np.random.choice(self.n, int(m), replace=False)
+            idx[ix] = 1.0
+            idx = idx.astype(bool)
+            Xtr, Ytr = X[idx], Y[idx]
+            Xte, Yte = X[1-idx], Y[1-idx]
+            xvals_reg_i = []
+            for reg in reg_params:
+                U, V = self._fit(Xtr, Ytr, n_comps=n_comps, lx=reg, ly=reg)
+                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
+                xvals_reg_i.append(r)
+            xvals_reg.append(xvals_reg_i)
             
+        xvals_reg = np.array(xvals_reg)
+        
+        return xvals_reg, xvals_mu
+        
+        
             
+        
+        
+    
+    
             
+     
                   
            
