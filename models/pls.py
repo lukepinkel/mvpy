@@ -786,11 +786,11 @@ class sCCA:
         return U, V
     
     def cross_val(self,  mu_range=None, reg_params=None, split_ratio=.7,
-                  n_iters=100, n_comps=None):
+                  n_iters=100, n_comps=None, vocal=True):
         if mu_range is None:
-            mu_range = np.arange(1.0, 20, 2)
+            mu_range = np.arange(1.0, 20, 5)
         if reg_params is None:
-            reg_params = np.arange(0.05, 2.0, 0.1)
+            reg_params = np.arange(0.05, 2.0, 0.3)
         X, Y = self.X, self.Y
         xvals_mu = []
         m = np.round(split_ratio*self.n)
@@ -804,8 +804,10 @@ class sCCA:
             xvals_mu_i = []
             for mu_k in mu_range:
                 U, V = self._fit(Xtr, Ytr, n_comps=n_comps, mu=mu_k)
-                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
-                xvals_mu.append(r)
+                r = np.trace(np.abs(cov(Xte.dot(U.T),Yte.dot(V.T))))
+                xvals_mu_i.append(r)
+                if vocal is True:
+                    print(i, mu_k)
             xvals_mu.append(xvals_mu_i)
         xvals_mu = np.array(xvals_mu)
         
@@ -820,15 +822,19 @@ class sCCA:
             xvals_reg_i = []
             for reg in reg_params:
                 U, V = self._fit(Xtr, Ytr, n_comps=n_comps, lx=reg, ly=reg)
-                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
+                r = np.trace(np.abs(cov(Xte.dot(U.T),Yte.dot(V.T))))
                 xvals_reg_i.append(r)
+                if vocal is True:
+                    print(i, reg)
             xvals_reg.append(xvals_reg_i)
             
         xvals_reg = np.array(xvals_reg)
+        reg = reg_params[np.argmax(xvals_reg.mean(axis=0))]
+        mu = mu_range[np.argmax(xvals_mu.mean(axis=0))]
+        return xvals_reg, xvals_mu, reg, mu
         
-        return xvals_reg, xvals_mu
         
-        
+            
             
         
         
