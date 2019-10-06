@@ -2,3 +2,5 @@
 *.DS_Store
 *test_lmm.py
 *tests.py
+build
+dist
