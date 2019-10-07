@@ -15,6 +15,7 @@ Currently includes rough implementations of
     - Wolds two block mode A (W2A)
   - Partial least squares structural equation modeling
   - Canonical correlation
+  - Sparse Canonical Correlation 
 - Structural equation modeling (Only the ML estimator works, although robust standard errors and adjusted test statistics are working)
 - Simple linear models
 - Generalized Linear Models 
