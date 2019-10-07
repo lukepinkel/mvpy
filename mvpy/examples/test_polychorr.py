@@ -9,6 +9,9 @@ import numpy as np
 import pandas as pd
 import mvpy.api as mv
 import mvpy.models.factor_analysis as mvf
+import mvpy.models.lvcorr as mvl
+import mvpy.utils.statfunc_utils as statfunc_utils
+
 import statsmodels.api as sm
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -21,21 +24,8 @@ df = data['data']
 X = df.iloc[:, :-3].dropna()
 Xcorr = X.corr()
 
-R = np.zeros((25, 25))
-k=0
-for i in range(25):
-    for j in range(i, 25):
-        if i==j:
-            R[i, j] = 0.5
-        else:
-            R[i, j] = mv.polychorr(X.iloc[:, i], X.iloc[:, j])[0]
-        print("%i-%u; %i/%i; (%2.2f):(%2.2f) - %2.2f"%(i, j, k, 325,
-              Xcorr.iloc[i, j], R[i, j],np.linalg.norm(Xcorr.iloc[i, j]-R[i, j])))
-        k+=1
-
-
+S = mvl.mixed_corr(X)
             
-S = pd.DataFrame(R+R.T, index=X.columns, columns=X.columns)
 sns.clustermap(S, vmin=-1, vmax=1, center=0, cmap=plt.cm.bwr, method='ward')
 
 Xsim = mv.center(mv.multi_rand(S))
@@ -47,7 +37,35 @@ factor_model.chi2
 factor_model.stdchi2
 factor_model.GFI
 factor_model.RMSEA
+
+
 Lambda = factor_model.Lambda
 Lambda, _ = mvf.rotate(Lambda, 'varimax')
 Lambda = pd.DataFrame(Lambda, index=X.columns)
 sns.heatmap(Lambda, vmin=-1, vmax=1, center=0.0, cmap=plt.cm.seismic)
+
+statfunc_utils.srmr(factor_model.Sigma, factor_model.S.values, factor_model.df)
+statfunc_utils.agfi(factor_model.Sigma, factor_model.S.values, factor_model.df)
+factor_model.RMSEA
+factor_model.chi2
+
+LR = pd.DataFrame(mvf.rotate(factor_model.Lambda, 'varimax')[0], index=X.columns)
+g = sns.clustermap(LR, vmin=-1, vmax=1, center=0.0, cmap=plt.cm.bwr, method='ward')
+g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+LR = pd.DataFrame(mvf.rotate(factor_model.Lambda, 'equamax')[0], index=X.columns)
+g = sns.clustermap(LR, vmin=-1, vmax=1, center=0.0, cmap=plt.cm.bwr, method='ward')
+g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+LR = pd.DataFrame(mvf.rotate(factor_model.Lambda, 'quartimax')[0], index=X.columns)
+g = sns.clustermap(LR, vmin=-1, vmax=1, center=0.0, cmap=plt.cm.bwr, method='ward')
+g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+LR = pd.DataFrame(mvf.rotate(factor_model.Lambda, 'promax')[0], index=X.columns)
+g = sns.clustermap(LR, vmin=-1, vmax=1, center=0.0, cmap=plt.cm.bwr, method='ward')
+g.ax_heatmap.set_yticklabels(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+
+
+
+
