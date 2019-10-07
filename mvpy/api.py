@@ -26,7 +26,7 @@ from mvpy.models.mv_rand import vine_corr, multi_rand, random_correlations
 from mvpy.models.pls import PLS_SEM, CCA, PLSC, PLSR
 from mvpy.models.sem import SEMModel
 from mvpy.models.clm import CLM
-from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis
+from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis, rotate
 from mvpy.models.lmm import LMM
 from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr
 from mvpy.models.simple_lm import LM
