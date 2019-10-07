@@ -30,13 +30,16 @@ sns.clustermap(S, vmin=-1, vmax=1, center=0, cmap=plt.cm.bwr, method='ward')
 
 Xsim = mv.center(mv.multi_rand(S))
 
-factor_model = mvf.FactorAnalysis(Xsim, 5)
+factor_model = mvf.FactorAnalysis(Xsim.values, 5)
 factor_model.fit()
 factor_model.gradient(factor_model.free)
 factor_model.chi2
 factor_model.stdchi2
 factor_model.GFI
 factor_model.RMSEA
+factor_model.AGFI
+factor_model.chi2p
+factor_model.SRMR
 
 
 Lambda = factor_model.Lambda

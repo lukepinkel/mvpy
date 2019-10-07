@@ -118,6 +118,7 @@ def binorm_cdf(h, k, r):
 
 
 def srmr(Sigma, S, df):
+    S = _check_np(S)
     p = S.shape[0]
     y = 0.0
     t = (p + 1.0) * p
