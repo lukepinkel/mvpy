@@ -75,7 +75,7 @@ def polychorr(x, y, ret_optimizer=False):
     optimizer = sp.optimize.minimize(polychor_ll, params, args=(xtab, k), bounds=bounds,
                    constraints=constr)
     
-    if np.isnan(optimizer.fun):
+    if (np.isnan(optimizer.fun)|(optimizer.success==False)):
         optimizer = sp.optimize.minimize(polychor_ll, params, args=(xtab, k), bounds=bounds)
         
     params = optimizer.x
