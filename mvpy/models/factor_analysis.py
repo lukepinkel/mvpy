@@ -15,6 +15,7 @@ from scipy.optimize import minimize
 from numpy.linalg import pinv, eig, norm, det, inv, eigh, slogdet
 from statsmodels.iolib.table import SimpleTable
 
+from ..utils import statfunc_utils
 from ..utils.base_utils import corr, cov, check_type
 from ..utils.linalg_utils import (sorted_eig, mdot, near_psd, diag2, 
                             replace_diagonal, pre_post_elim, dmat, nmat,
@@ -645,17 +646,11 @@ class FactorAnalysis:
         tmp2 = tmp1 - eye(self.p)
         t = (self.p + 1.0) * self.p
         self.df = t  - np.sum(self.idx)
-        self.GFI = 1.0 - trace(dot(tmp2, tmp2)) / trace(dot(tmp1, tmp1))
-        #self.AGFI = 1. - (t / (2.0*self.df)) * (1-self.GFI)
+        self.GFI = statfunc_utils.gfi(self.Sigma, self.S)
+        self.AGFI = statfunc_utils.agfi(self.Sigma, self.S, self.df)
         self.stdchi2 = (self.chi2 - self.df) /  sqrt(2*self.df)
         self.RMSEA = sqrt(np.maximum(self.chi2-self.df, 0)/(self.df*(self.n-1)))
-        '''
-        SRMR = 0.0
-        for i in range(self.p):
-            for j in range(i):
-                SRMR += (self.Sigma[i, j]-self.S[i, j])**2/(self.S[i, i]*self.S[j, j])
-        self.SRMR = sqrt((2.0 / (t)) * SRMR)
-        '''
-
+        self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
+	self.chi2, self.chi2p = statfunc_utils.lr_test(self.Sigma, self.S, self.df)
 
 
