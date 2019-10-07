@@ -13,7 +13,7 @@ from mvpy.models.mv_rand import vine_corr, multi_rand
 from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2, 
                                     fprime, fprime_cs, hess_approx, inv_sqrth,
                                     inv_sqrt, invec, invech, jmat, khatri_rao,
-                                    kmat, kronvec_mat, lmat, lstq, lstq_pred,
+                                    kmat, kronvec_mat, lmat, lstq, lstq_pred, dmat,
                                     mat_rconj, mdot, near_psd, nmat,
                                     normalize_diag,omat, pre_post_elim, 
                                     replace_diagonal, rotate, sdot,
