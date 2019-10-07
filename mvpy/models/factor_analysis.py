@@ -651,6 +651,6 @@ class FactorAnalysis:
         self.stdchi2 = (self.chi2 - self.df) /  sqrt(2*self.df)
         self.RMSEA = sqrt(np.maximum(self.chi2-self.df, 0)/(self.df*(self.n-1)))
         self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
-	self.chi2, self.chi2p = statfunc_utils.lr_test(self.Sigma, self.S, self.df)
+        self.chi2, self.chi2p = statfunc_utils.lr_test(self.Sigma, self.S, self.df)
 
 
