@@ -217,6 +217,7 @@ def polychor_loglike(X, a, b, r):
     n, k = pr.shape
     pr = np.array([[pr[i, j]+pr[i-1,j-1]-pr[i-1,j]-pr[i,j-1] 
                    for j in range(1,k)] for i in range(1,n)])
+    pr = np.maximum(pr, 1e-16)
     ll = np.sum(X * log(pr))
     return ll
 
@@ -236,6 +237,7 @@ def normal_categorical(x, nx):
 
 
 def polychor_ll(params, X, k):
+    X = _check_np(X)
     rho = params[0]
     a, b = params[1:k+1], params[k+1:]
     return -polychor_loglike(X, a, b, rho)
@@ -243,6 +245,7 @@ def polychor_ll(params, X, k):
 
 
 def polychor_partial_ll(rho, X, k, params):
+    X = _check_np(X)
     a, b = params[:k], params[k:]
     return -polychor_loglike(X, a, b, rho)
 

@@ -14,7 +14,7 @@ import scipy.optimize
 from ..utils.linalg_utils import _check_1d
 from ..utils.base_utils import check_type, corr
 from ..utils.statfunc_utils import (norm_qtf, polyserial_ll,
-                                    polychor_thresh, polychor_ll)
+                                    polychor_thresh, polychor_ll, polychor_partial_ll)
 
 def tetra(X, return_sterr=False):
     '''
@@ -53,7 +53,7 @@ def tetra(X, return_sterr=False):
         return R, Rl, Ru
     
  
-def polychorr(x, y, ret_optimizer=False):
+def polychorr(x, y, ret_optimizer=False, method=2):
     x, xcols, xix, x_is_pd = check_type(x)
     y, ycols, yix, y_is_pd = check_type(y)
     x, y = pd.Series(_check_1d(x)), pd.Series(_check_1d(y))
@@ -72,14 +72,21 @@ def polychorr(x, y, ret_optimizer=False):
     
     bounds = [(-1.0, 1.0)]+ [(None, None) for i in range(len(params)-1)]
     
-    optimizer = sp.optimize.minimize(polychor_ll, params, args=(xtab, k), bounds=bounds,
+    if method == 1:
+        optimizer = sp.optimize.minimize(polychor_ll, params, args=(xtab, k), bounds=bounds,
                    constraints=constr)
     
-    if (np.isnan(optimizer.fun)|(optimizer.success==False)):
+    elif method == 2:
         optimizer = sp.optimize.minimize(polychor_ll, params, args=(xtab, k), bounds=bounds)
-        
+    elif method == 3:
+         optimizer = sp.optimize.minimize(polychor_partial_ll, rinit, 
+                                          args=(xtab, k, params[1:]), 
+                                          bounds=[bounds[0]])
     params = optimizer.x
-    rho, a, b = params[0], params[1:k+1], params[k+1:]
+    if method !=3:
+        rho, a, b = params[0], params[1:k+1], params[k+1:]
+    else:
+        rho, a, b = params[0], params[:k], params[k:]
     if ret_optimizer is False:
         return rho, a, b
     else:
