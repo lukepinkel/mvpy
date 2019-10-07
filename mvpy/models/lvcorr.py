@@ -158,11 +158,11 @@ def mixed_corr(data, var_types=None):
             else:
                 ctype = _infer_ctype(var_types[i], var_types[j])
                 if ctype=="corr":
-                    R[i, j] = corr(X.iloc[:, i], X.iloc[:, j])
-                elif ctype=="polchorr":
-                    R[i, j] = polychorr(X.iloc[:, i], X.iloc[:, j])[0]
+                    R[i, j] = corr(X[:, i], X[:, j])
+                elif ctype=="polychorr":
+                    R[i, j] = polychorr(X[:, i], X[:, j])[0]
                 elif ctype=="polserial":
-                    R[i, j] = polychorr(X.iloc[:, i], X.iloc[:, j])
+                    R[i, j] = polychorr(X[:, i], X[:, j])
     R += R.T
     if is_pd:
         R = pd.DataFrame(R, index=xcols, columns=xcols)
