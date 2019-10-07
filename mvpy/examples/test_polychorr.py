@@ -24,7 +24,7 @@ df = data['data']
 X = df.iloc[:, :-3].dropna()
 Xcorr = X.corr()
 
-S = mvl.mixed_corr(X)
+S = mvl.mixed_corr(X, ["Ord"]*25)
             
 sns.clustermap(S, vmin=-1, vmax=1, center=0, cmap=plt.cm.bwr, method='ward')
 
