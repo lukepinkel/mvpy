@@ -293,7 +293,16 @@ def spsweep(X, partition):
     Xswp = sps.bmat([[Ainv, X12], [-X12.T, D - B.T.dot(X12)]])
     return Xswp
 
-
+def adf_mat(Z):
+    S = cov(Z)
+    mu = Z.mean(axis=0)
+    Y = _check_np(Z)
+    s = vech(_check_np(S))
+    ss = [vech((Y[i] - mu)[:, None].dot((Y[i]-mu)[:, None].T)) 
+          for i in range(Y.shape[0])]
+    Gadf = np.sum([(si-s)[:, None].dot((si-s)[:, None].T) for si in ss],
+                   axis=0)/Y.shape[0]
+    return Gadf
 
 def qcov(X, Y=None): 
     if np.isnan(X).any():
