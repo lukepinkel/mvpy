@@ -129,3 +129,50 @@ def polyserial(x, y):
         rho_hat = pd.DataFrame([[rho_hat]], index=[ycols],
                                columns=[xcols])
     return rho_hat
+
+
+
+def _infer_ctype(vi, vj):
+    if (vi=="Contin")&(vj=="Contin"):
+        return "corr"
+    elif (((vi=="Contin")&(vj=="Ord"))|((vi=="Ord")&(vj=="Contin"))):
+        return "polyserial"
+    elif (vi=="Ord")&(vj=="Ord"):
+        return "polychorr"
+    
+
+
+def mixed_corr(data, var_types=None):
+    X, xcols, xix, is_pd = check_type(data)
+    if var_types in ["infer", None]:
+        var_types = [np.unique(X[:, i]) for i in range(X.shape[1])]
+        var_types = ["Ord" if v<7 else "Contin" for v in var_types]
+    elif type(var_types) is dict:
+        var_types = list(var_types.values())
+    
+    R = np.zeros((data.shape[1], data.shape[1]))
+    for i in range(X.shape[1]):
+        for j in range(i, X.shape[1]):
+            if i==j:
+                R[i, j] = 0.5
+            else:
+                ctype = _infer_ctype(var_types[i], var_types[j])
+                if ctype=="corr":
+                    R[i, j] = corr(X.iloc[:, i], X.iloc[:, j])
+                elif ctype=="polchorr":
+                    R[i, j] = polychorr(X.iloc[:, i], X.iloc[:, j])[0]
+                elif ctype=="polserial":
+                    R[i, j] = polychorr(X.iloc[:, i], X.iloc[:, j])
+    R += R.T
+    if is_pd:
+        R = pd.DataFrame(R, index=xcols, columns=xcols)
+    return R
+            
+                
+       
+
+
+
+
+
+
