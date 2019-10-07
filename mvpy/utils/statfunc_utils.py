@@ -100,12 +100,25 @@ def binorm_l(h, k, r):
     '''
     Bivariate normal likelihood function
     '''
-    eq1 = 5 * binorm_dl(h, k, (1 - sqrt(3/5)) * r / 2)
-    eq2 = 8 * binorm_dl(h, k, r/2)
-    eq3 = 5 * binorm_dl(h, k, (1 + sqrt(3/5)) * r / 2)
-    likelihood = r * (eq1 + eq2 + eq3) / 18
+    root1 = sqrt(5.0 - 2 * sqrt(10.0/7.0)) / 3
+    root2 = sqrt(5.0 + 2 * sqrt(10.0/7.0)) / 3
+    r2 = r/2.0
+    w1 = 128.0/225.0
+    w2 = (322.0+13.0*sqrt(70.0)) / 900.0
+    w3 = (322.0-13.0*sqrt(70.0)) / 900.0
+    
+    eq1 = w1 * binorm_dl(h, k, r / 2)
+    
+    eq2 = w2 * binorm_dl(h, k, (1-root1) * r2)
+    eq3 = w2 * binorm_dl(h, k, (1+root1) * r2)
+    
+    eq4 = w3 * binorm_dl(h, k, (1-root2) * r2)
+    eq5 = w3 * binorm_dl(h, k, (1+root2) * r2)
+
+    likelihood = r2 * (eq1 + eq2 + eq3 + eq4 + eq5) 
     likelihood += norm_cdf(-h) * norm_cdf(-k)
     return likelihood
+
 
 def binorm_cdf(h, k, r):
     '''
