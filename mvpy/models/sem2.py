@@ -472,7 +472,7 @@ class SEM:
         self.sumstats.columns=['Goodness_of_fit']
         
         
-        
+'''        
         
       
 data = pd.read_csv("/users/lukepinkel/Downloads/bollen.csv", index_col=0)
@@ -577,7 +577,7 @@ model7.SRMR
 
 
 
-
+'''
 
 
 
