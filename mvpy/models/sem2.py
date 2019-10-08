@@ -142,6 +142,15 @@ class SEM:
         Phi, the latent variable covariance matrix,  
     phk: numeric
         Factor by which to divide the 2SLS estimate of Phi by
+    fit_func : str
+        Choice of fitting function.  Options are QD for the quadratic estimator
+        (less computationally intensive than MK), ML estimator (fastest 
+        convergence), or TR for the trace form of the quadratic estimator
+    wmat :
+        Weight matrix for the fitting function.  Valid options for estimators 
+        are (normal and wishart) for ML, TR, and (normal, wishart, adf) for QD
+        
+        
     """
     
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0, fit_func='ML',
@@ -189,18 +198,18 @@ class SEM:
             PH = np.eye(BE.shape[0])
         if (type(PH) is pd.DataFrame)|(type(PH) is pd.Series):
             for x in PH[PH!=0].stack().index.values:
-                labels.append("r(%s ~ %s)"%(x[1], x[0]))
+                labels.append("var(%s ~ %s)"%(x[1], x[0]))
         else:
             tmp = pd.DataFrame(PH, index=LA.columns, columns=LA.columns)
             tix = np.triu(np.ones(tmp.shape)).astype('bool').reshape(tmp.size)
             tmp = tmp.stack()[tix]
             for x in tmp[tmp!=0].index.values:
-                labels.append("resid(%s, %s)"%(x[1], x[0])) 
+                labels.append("var(%s, %s)"%(x[1], x[0])) 
                 
                 
         if (type(TH) is pd.DataFrame)|(type(TH) is pd.Series):
             for x in TH[TH!=0].stack().index.values:
-                labels.append("r(%s ~ %s)"%(x[1], x[0]))
+                labels.append("resid(%s ~ %s)"%(x[1], x[0]))
         else:
             tmp = pd.DataFrame(TH, index=LA.index, columns=LA.index)
             tix = np.triu(np.ones(tmp.shape)).astype('bool').reshape(tmp.size)
@@ -433,7 +442,7 @@ class SEM:
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
                                 columns=self.labels).T
-        
+        #need to modify chi2 for non ml fit functions
         self.test_stat = (self.n_obs-1)*(self.obj_func(self.free)\
                          - np.linalg.slogdet(self.S)[1]-self.S.shape[0])
         self.df = len(linalg_utils.vech(self.S))-len(self.free)
@@ -576,7 +585,7 @@ model6.SRMR
 model7.SRMR
 
 import mvpy.api as mv
-
+import timeit
 
 Lambda = np.zeros((15, 5))
 Lambda[0, 0] = 1.0
@@ -603,7 +612,15 @@ Beta = Beta.T
 IB = np.linalg.pinv(linalg_utils.mat_rconj(Beta))
 Phi = np.diag(np.arange(5, 0, -1))
 Sigma = Lambda.dot(IB).dot(Phi).dot(IB.T).dot(Lambda.T)+np.eye(15)*2
-
+free = np.array([0.5, 2.0, 1.0, 1.0, 1.0,
+                 1.0, 1.0, 1.0, 1.0, 1.0,
+                 1.0, 0.5, 1.0, 0.5, 1.0, 
+                 -0.5, 1.0, 5.0, 4.0, 3.0, 
+                 2.0, 1.0, 2.0, 2.0, 2.0,
+                 2.0, 2.0, 2.0, 2.0, 2.0,
+                 2.0, 2.0, 2.0, 2.0, 2.0,
+                 2.0, 2.0
+                 ])
 Z = mv.center(mv.multi_rand(Sigma, 5000))
 Z = pd.DataFrame(Z, columns=["x%i"%i for i in range(1, 16)])
 TH = pd.DataFrame(np.eye(15), columns=Z.columns, index=Z.columns)
@@ -612,12 +629,33 @@ Beta = pd.DataFrame(Beta!=0, index=Lambda.columns, columns=Lambda.columns)
 model = SEM(Z, Lambda, Beta, TH)
 model.fit()
 
-model = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='wishart')
-model.fit()
+modelqd = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='wishart')
+modelqd.fit()
 
 
-model = SEM(Z, Lambda, Beta, TH, fit_func='ML', wmat='wishart')
-model.fit()
+modelml = SEM(Z, Lambda, Beta, TH, fit_func='ML', wmat='wishart')
+modelml.fit()
+
+
+modeltr = SEM(Z, Lambda, Beta, TH, fit_func='TR', wmat='wishart')
+modeltr.fit()
+
+%timeit modelqd.obj_func(modelqd.free) #174 µs
+%timeit modelml.obj_func(modelml.free) #266 µs
+%timeit modeltr.obj_func(modeltr.free) #153 µs
+
+%timeit modelqd.gradient(modelqd.free) #850 µs
+%timeit modelml.gradient(modelml.free) #1.2 ms 
+%timeit modeltr.gradient(modeltr.free) #820 µs
+
+%timeit modelqd.hessian(modelqd.free) #904 µs
+%timeit modelml.hessian(modelml.free) #1.58 ms 
+%timeit modeltr.hessian(modeltr.free) #897 µs
+
+qr_error =  np.mean((modelqd.free-free)**2)**0.5
+ml_error =  np.mean((modelml.free-free)**2)**0.5
+tr_error =  np.mean((modeltr.free-free)**2)**0.5
+
 
 
 '''
