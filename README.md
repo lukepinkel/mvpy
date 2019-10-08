@@ -16,7 +16,7 @@ Currently includes rough implementations of
   - Partial least squares structural equation modeling
   - Canonical correlation
   - Sparse Canonical Correlation 
-- Structural equation modeling (Only the ML estimator works, although robust standard errors and adjusted test statistics are working)
+- Structural equation modeling using ML, and GLS with normal, wishart, and adf weight matrices
 - Simple linear models
 - Generalized Linear Models 
   - Poission, Gamma, and Bernoulli distributions
