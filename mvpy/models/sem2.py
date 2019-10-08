@@ -575,6 +575,49 @@ model5.SRMR
 model6.SRMR
 model7.SRMR
 
+import mvpy.api as mv
+
+
+Lambda = np.zeros((15, 5))
+Lambda[0, 0] = 1.0
+Lambda[1, 0] = 0.5
+Lambda[2, 0] = 2.0
+
+Lambda[3:6, 1] = 1.0
+Lambda[6:9, 2] = 1.0
+Lambda[9:12, 3] = 1.0
+Lambda[12:15, 4] = 1.0
+
+
+Beta = np.zeros((5, 5))
+Beta[1, 0] = 1.0
+Beta[2, 0] = 0.5
+Beta[2, 1] = 1.0
+Beta[3, 1] = 0.5
+Beta[3, 2] = 1.0
+Beta[4, 2] = -.5
+Beta[4, 3] = 1.0
+
+
+Beta = Beta.T
+IB = np.linalg.pinv(linalg_utils.mat_rconj(Beta))
+Phi = np.diag(np.arange(5, 0, -1))
+Sigma = Lambda.dot(IB).dot(Phi).dot(IB.T).dot(Lambda.T)+np.eye(15)*2
+
+Z = mv.center(mv.multi_rand(Sigma, 5000))
+Z = pd.DataFrame(Z, columns=["x%i"%i for i in range(1, 16)])
+TH = pd.DataFrame(np.eye(15), columns=Z.columns, index=Z.columns)
+Lambda = pd.DataFrame(Lambda, index=Z.columns, columns=['lv%i'%i for i in range(1, 6)])
+Beta = pd.DataFrame(Beta!=0, index=Lambda.columns, columns=Lambda.columns)
+model = SEM(Z, Lambda, Beta, TH)
+model.fit()
+
+model = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='wishart')
+model.fit()
+
+
+model = SEM(Z, Lambda, Beta, TH, fit_func='ML', wmat='wishart')
+model.fit()
 
 
 '''
