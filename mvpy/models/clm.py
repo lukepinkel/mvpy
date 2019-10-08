@@ -238,6 +238,7 @@ class CLM:
         else:
           idx = idx+["beta%i"%i for i in range(self.X.shape[1])]
         self.res.index  = idx
+        self.res['p']  = sp.stats.t.sf(np.abs(self.res['t']), self.Y.shape[0]-len(self.params))*2.0
         self.theta = self.params[:len(theta)]
         self.beta = self.params[len(theta):]
         self.LLA = self.loglike(self.params)
