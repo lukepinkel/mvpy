@@ -126,7 +126,7 @@ class GLM:
         V = self.f.var_func(T)
         Vinv =1.0/V
         W = Vinv * self.f.dinv_link(eta)
-        G = -(linalg_utils._check_1d(Y) - mu) * W
+        G = -(linalg_utils._check_1d(Y) - mu) / phi * W
         g = X.T.dot(G)
         return g
     
@@ -147,7 +147,7 @@ class GLM:
         Psb = Vinv*W0
         W = Psc - Psb
         
-        H = (X.T * W).dot(X)
+        H = (X.T * W).dot(X) / phi
         return -H
     
     def fit(self, optimizer_kwargs=None):
@@ -400,8 +400,76 @@ class Gamma:
         lb[ixb] = (y - mu) / mu
         d = lb - lna
         return 2*d
+
+
+class Normal:
     
+    def __init__(self, phi, link='canonical'):
+        self.phi = phi
+        if link == 'canonical':
+            self.link=IdentityLink()
+            self.type_='canonical'
+        else:
+            self.link = link
+            self.type_='noncanonical'
+    def canonical_parameter(self, mu):
+        T = mu
+        return T
     
+    def inv_link(self, eta):
+        return self.link.inv_link(eta)
+        
+    def dinv_link(self, eta):
+        return self.link.dinv_link(eta)
+    
+    def d2inv_link(self, eta):
+        return self.link.d2inv_link(eta)
+    
+    def cumulant(self, T):
+        b = T**2  / 2.0
+        return b
+    
+    def mean_func(self, T):
+        mu = T
+        return mu
+    
+    def var_func(self, T):
+        V = np.array([1.0])
+        return V
+                
+    def d2canonical(self, mu):
+        res = 0.0*mu
+        return res
+    
+    def unpack_params(self, params):
+        beta = params
+        phi = self.phi
+        return beta, phi
+    
+    def deviance(self, params, X, Y):
+        y = linalg_utils._check_1d(Y)
+        mu = self.inv_link(X.dot(params))
+        d = (y - mu)**2
+        return 2*d
+
+
+
+class IdentityLink:
+
+    def __init__(self):
+        self.fnc='identity'
+        
+    def inv_link(self, eta):
+        mu = eta
+        return mu
+    
+    def dinv_link(self, eta):
+        dmu = 0.0*eta+1.0
+        return dmu
+        
+    def d2inv_link(self, eta):
+        d2mu = 0.0*eta
+        return d2mu
     
 class LogitLink:
 

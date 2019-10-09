@@ -16,9 +16,10 @@ from patsy import dmatrices
 from numpy.linalg import pinv
 from scipy.stats import t as t_dist
 
-from ..utils.linalg_utils import einv, _check_np, _check_1d, _check_2d
+from ..utils.linalg_utils import einv, _check_np, _check_1d, _check_2d, _check_0d
 from ..utils.base_utils import corr, valid_overlap
 from ..utils.statfunc_utils import fdr_bh
+
 class LM:
     
     def __init__(self, formula, data):
@@ -86,6 +87,41 @@ class LM:
         dev = 0.5
         ll = k + ldt + dev
         return ll
+    
+    def _htest(self, X):
+        anv = np.concatenate(self.minimum_ols(X, (self.y - self.yhat)**2))
+        anova_table = pd.DataFrame(anv, index=['sst', 'ssr', 'sse', 'mst', 'msr',
+                                               'mse', 'r2', 'r2_adj']).T
+        anova_table['F'] = anova_table.eval('msr/mse')
+        chi2 = _check_0d(_check_np(anova_table['r2']*self.X.shape[0]))
+        chi2p =_check_0d(_check_np(sp.stats.chi2.sf(chi2, self.X.shape[1]-1)))
+        f = _check_0d(_check_np(anova_table['F']))
+        fp = sp.stats.f.sf(f, self.X.shape[0]-self.X.shape[1], self.X.shape[1]-1)
+        htest_res = [[chi2, chi2p], [f, fp]]
+        htest_res = pd.DataFrame(htest_res, index=['chi2', 'F'],
+                                 columns=['Test Value', 'P Value'])
+        return htest_res
+    
+    def _whitetest(self):
+        X = _check_np(self.X)
+        Xprods = X[:, np.tril_indices(X.shape[1])[0]]
+        Xprods *= Xprods[:, np.tril_indices(X.shape[1])[1]]
+        return self._htest(Xprods)
+        
+    def _breuschpagan(self):
+        return self._htest(self.X)
+    
+    def heteroskedasticity_test(self):
+        res = pd.concat([self._whitetest(),
+                         self._breuschpagan()])
+        res.index = pd.MultiIndex.from_product([['White Test', 'Breusch-Pagan'],
+                                               res.index[:2].tolist()])
+        self.heteroskedasticity_res = res
+        
+    
+    
+        
+         
     
 class MassUnivariate:
     
