@@ -432,10 +432,16 @@ class SEM:
         return Vrob, scale
 
     
-    def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2):
+    def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2,
+            constraints=(), use_hess=True):
+        if use_hess:
+            hess = self.hessian
+        else:
+            hess = None
         self.optimizer = sp.optimize.minimize(self.obj_func, self.free, 
                                   jac=self.gradient,
-                                  hess=self.hessian, method='trust-constr',
+                                  constraints=constraints,
+                                  hess=hess, method='trust-constr',
                                   bounds=self.bounds,
                                   options={'xtol':xtol, 'gtol':gtol,
                                            'maxiter':maxiter,'verbose':verbose})    
@@ -662,8 +668,12 @@ Beta = pd.DataFrame(Beta!=0, index=Lambda.columns, columns=Lambda.columns)
 model = SEM(Z, Lambda, Beta, TH)
 model.fit()
 
+modelqdadf = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='adf')
+modelqdadf.fit(maxiter=10000, xtol=1e-4, gtol=1e-5)
+
 modelqd = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='wishart')
-modelqd.fit()
+modelqd.fit(maxiter=10000, xtol=1e-4, gtol=1e-5)
+
 
 
 modelml = SEM(Z, Lambda, Beta, TH, fit_func='ML', wmat='wishart')
