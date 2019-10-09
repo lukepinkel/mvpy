@@ -43,6 +43,10 @@ class ObjFuncQD:
         H = -2* G.T.dot(self.V).dot(G)
         return H
     
+    def test_stat(self, Sigma, n):
+        return (n - 1) * self.func(Sigma)
+        
+    
     
 
 
@@ -72,7 +76,9 @@ class ObjFuncTR:
     def hessian(self, Sigma, G):
         H = -2* G.T.dot(self.V).dot(G)
         return H
-    
+    def test_stat(self, Sigma, n):
+        return (n - 1) * self.func(Sigma)
+
     
 class ObjFuncML:
     def __init__(self, W=None, Winv=None, S=None):
@@ -105,6 +111,11 @@ class ObjFuncML:
         
         H = 2*G.T.dot(V).dot(G)
         return H
+    
+    def test_stat(self, Sigma, n):
+        t =  self.func(Sigma) - np.linalg.slogdet(self.W)[1] - Sigma.shape[0]
+        return (n - 1) * t
+        
 
 
 
@@ -237,7 +248,6 @@ class SEM:
         k2 = k2 + k1
         k3 = k2 + k3
         k4 = k3 + k4 
-        
         self.k1, self.k2, self.k3, self.k4 = k1, k2, k3, k4
         self.p, self.k = p, k
         self.n_obs = Z.shape[0]
@@ -442,19 +452,35 @@ class SEM:
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 
                                 index=['Coefs','SE1', 'SE2', 'SEr'], 
                                 columns=self.labels).T
-        #need to modify chi2 for non ml fit functions
-        self.test_stat = (self.n_obs-1)*(self.obj_func(self.free)\
-                         - np.linalg.slogdet(self.S)[1]-self.S.shape[0])
+
+        self.test_stat = self._obj_func.test_stat(self.Sigma, self.n_obs)
         self.df = len(linalg_utils.vech(self.S))-len(self.free)
+        
         self.test_scale = scale / self.df
         self.t_robust = self.test_stat / self.test_scale
         self.test_pval = 1.0 - sp.stats.chi2.cdf(self.test_stat, self.df)
         self.robust_pval = sp.stats.chi2.sf(self.t_robust, self.df)
+        
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
         self.res['p'] = sp.stats.t.sf(abs(self.res['t']), self.n_obs)
-        #self.res['adj p'] = fdr_bh(self.res['p'])
+
         self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
         self.GFI = statfunc_utils.gfi(self.Sigma, self.S)
+        self.AIC = self.test_stat+len(self.free)
+        self.BIC = self.test_stat+len(self.free)*np.log(self.n_obs)
+        self.Sigma_baseline = np.diag(np.diag(self.S))
+        self.tbase = self._obj_func.test_stat(self.Sigma_baseline, 
+                                                      self.n_obs)
+        self.NFI1 = (self.tbase - self.test_stat) / self.tbase
+        dfm = len(self.free) 
+        dfb = self.S.shape[0] 
+        self.NFI2 = (self.tbase - self.test_stat) / (self.tbase - dfm)
+        self.RhoFI1 = (self.tbase/dfb - self.test_stat/dfm) / (self.tbase/dfb)
+        self.RhoFI2 = (self.tbase/dfb - self.test_stat/dfm)/(self.tbase/dfb-1)
+        self.ffval = self.test_stat / (self.n_obs - 1)
+        
+        
+        
         if self.df!=0:
             self.AGFI = statfunc_utils.agfi(self.Sigma, self.S, self.df)
             self.st_chi2 = (self.test_stat - self.df) / np.sqrt(2*self.df)
@@ -464,21 +490,28 @@ class SEM:
             self.AGFI = None
             self.st_chi2 = None
             self.RMSEA = None
-        
-        self.sumstats = [self.SRMR,
-                         self.GFI,
-                         self.AGFI,
-                         self.st_chi2,
-                         self.RMSEA,
-                         self.test_stat,
-                         self.test_pval,
-                         self.t_robust,
-                         self.robust_pval]
-        self.sumstats = pd.DataFrame(self.sumstats)
-        self.sumstats.index = ['SRMR', 'GFI', 'AGFI', 'chi2_st',
-                               'RMSEA', 'chi2', 'chi2_pval', 'chi2_robust',
-                               'chi2_robust_pval']
-        self.sumstats.columns=['Goodness_of_fit']
+        rsquared = 1 - np.diag(self.TH) / np.diag(self.S)
+        self.rsquared = pd.DataFrame(rsquared, index=self.zcols)
+        self.r2total = 1 - np.linalg.det(self.TH) / np.linalg.det(self.S)
+        self.sumstats = pd.DataFrame([[self.AGFI, '-'],
+                                      [self.AIC, '-'],
+                                      [self.BIC, '-'],
+                                      [self.ffval, '-'],
+                                      [self.GFI, '-'],
+                                      [self.NFI1, '-'],
+                                      [self.NFI2, '-'],
+                                      [self.RhoFI1, '-'],
+                                      [self.RhoFI2, '-'],
+                                      [self.RMSEA, '-'],
+                                      [self.SRMR, '-'],
+                                      [self.test_stat, self.test_pval],
+                                      [self.t_robust, self.robust_pval],
+                                      [self.st_chi2, '-']
+                                      ])
+        self.sumstats.index = ['AGFI', 'AIC', 'BIC', 'F', 'GFI', 'NFI1', 
+                               'NFI2', 'RhoFI1', 'RhoFI2', 'RMSEA', 'SRMR',
+                               'chi2', 'chi2_robust', 'chi2_standard']
+        self.sumstats.columns=['Goodness_of_fit', 'P value']
         
         
 '''        
