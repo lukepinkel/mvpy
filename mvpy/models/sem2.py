@@ -472,8 +472,10 @@ class SEM:
 
         self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
         self.GFI = statfunc_utils.gfi(self.Sigma, self.S)
-        self.AIC = self.test_stat+len(self.free)
-        self.BIC = self.test_stat+len(self.free)*np.log(self.n_obs)
+        self.LL = -self.obj_func(self.free) * (self.n_obs)
+        self.LL += len(self.free) * np.log(np.pi)
+        self.AIC = 2*len(self.free)-2*self.LL
+        self.BIC = len(self.free)*np.log(self.n_obs)-2*self.LL
         self.Sigma_baseline = np.diag(np.diag(self.S))
         self.tbase = self._obj_func.test_stat(self.Sigma_baseline, 
                                                       self.n_obs)
