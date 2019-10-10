@@ -20,13 +20,13 @@ from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2,
                                     sparse_cholesky, sparse_kmat, svd2, spsweep, 
                                     sweep, symm_deriv, vec, vecc, vech, vechc,
                                     whiten, woodbury_inversion,
-                                    wpca, xiprod, xprod, zca)
+                                    wpca, xiprod, xprod, zca, rotate)
 
 from mvpy.models.mv_rand import vine_corr, multi_rand, random_correlations
 from mvpy.models.pls import PLS_SEM, CCA, PLSC, PLSR
 from mvpy.models.sem2 import SEM
 from mvpy.models.clm import CLM
-from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis, rotate
+from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis
 from mvpy.models.lmm import LMM
 from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr
 from mvpy.models.simple_lm import LM

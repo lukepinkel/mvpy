@@ -531,7 +531,7 @@ class FactorAnalysis:
                        - np.eye(self.q)/20.0
         self.Psi = np.diag((self.V**2)[:, :nfacs].sum(axis=1))
         if unit_var is True:
-            Phi = self.Phi.copy() * 0.0
+            Phi = self.Phi.copy() - np.eye(q)
         else:
             Phi = self.Phi.copy()
         self.params = np.block([linalg_utils.vec(self.Lambda), linalg_utils.vech(self.Phi), 
@@ -547,7 +547,7 @@ class FactorAnalysis:
         self.free = self.params[self.idx]
         
     def p2m(self, params):
-        Lambda = linalg_utils.unvec(params[:self.p*self.q], self.p, self.q)
+        Lambda = linalg_utils.invec(params[:self.p*self.q], self.p, self.q)
         Phi = linalg_utils.invech(params[int(self.p*self.q):int(self.p*self.q+(self.q+1)*self.q/2)])
         Psi = linalg_utils.invech(params[int(self.p*self.q+(self.q+1)*self.q/2):])
         return Lambda, Phi, Psi
