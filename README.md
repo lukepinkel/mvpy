@@ -4,7 +4,7 @@ Currently includes rough implementations of
 - Factor analytic methods. 
   - Confirmatory factor analysis via the CFA class, fit through EM
   - Exploratory factor analysis via the EFA class, fit through EM or Lawleys ML algorithm
-  - Both via the FactorAnalysis class, fit through constrained Newtons method using a parameterizatioon more robust to small unique variances
+  - Both via the FactorAnalysis class, fit through constrained Newtons method using a parameterization more robust to small unique variances
   - Factor rotation
 - Linear mixed models capable of handling multivariate models
 - Latent variable correlations for handling polychorric, polytomous and tetrachoric correlation
