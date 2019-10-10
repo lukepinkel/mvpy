@@ -531,7 +531,7 @@ class FactorAnalysis:
                        - np.eye(self.q)/20.0
         self.Psi = np.diag((self.V**2)[:, :nfacs].sum(axis=1))
         if unit_var is True:
-            Phi = self.Phi.copy() - np.eye(q)
+            Phi = self.Phi.copy() - np.eye(self.q)
         else:
             Phi = self.Phi.copy()
         self.params = np.block([linalg_utils.vec(self.Lambda), linalg_utils.vech(self.Phi), 
