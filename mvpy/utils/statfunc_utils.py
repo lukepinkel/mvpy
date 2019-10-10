@@ -297,3 +297,19 @@ def fdr_bh(p_values):
         p_values = pd.DataFrame(p_values, columns=cols, index=ix)
     return p_values
     
+
+
+def msa(R):
+    Ri = np.linalg.pinv(R)
+    D = np.diag(1.0/np.sqrt(np.diag(Ri)))
+    Q = np.linalg.multi_dot([D, Ri, D])
+    Ri = Ri - np.diag(np.diag(Ri))
+    Q = Q - np.diag(np.diag(Q))
+    
+    res = np.linalg.norm(Ri) / (np.linalg.norm(Q) + np.linalg.norm(Ri))
+    return res
+
+
+    
+    
+    
