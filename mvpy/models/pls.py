@@ -407,7 +407,7 @@ class PLSR:
                                                  n_iters=n_iters, tol=tol)
         elif method == 'SIMPLS':
             self.x_factors, self.x_loadings, self.y_factors, \
-            self.y_loadings,  self.coefs, self.obs_coefs = simpls(self.X, self.Y, self.ncomps)
+            self.y_loadings,  self.obs_coefs, self.coefs = simpls(self.X, self.Y, self.ncomps)
             
         elif method == 'W2A':
             self.x_factors, self.y_factors, self.x_loadings, \
@@ -449,7 +449,7 @@ class PLSR:
                 _, XL, _, YL, B = nipals(X_samples, Y_samples, self.ncomps,
                                            n_iters=n_nipals_iters, tol=tol)
             elif method == 'SIMPLS':
-                _, XL, _, YL, B,_ = simpls(X_samples, Y_samples,
+                _, XL, _, YL, _, B= simpls(X_samples, Y_samples,
                                                    self.ncomps)
             elif method == 'W2A':
                 _, _, XL, YL, B = pls_w2a(X_samples, Y_samples, self.ncomps)
