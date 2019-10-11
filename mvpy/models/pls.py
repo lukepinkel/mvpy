@@ -474,6 +474,30 @@ class PLSR:
             #self.Bsmp = Bsmp
             if vocal is True:
                 print(i)
+    def cross_validate(self, n_samples=100, method='SIMPLS', n_nipals_iters=100,
+                       tol=1e-6):
+        rss = 0.0
+        for i in range(n_samples):
+            sample_ix = np.random.choice(self.n_obs, size=int(self.n_obs/2.0))
+            test_ix = [x for x in np.arange(self.n_obs) if x not in sample_ix]
+            X_samples, X_test = self.X[sample_ix], self.X[test_ix]
+            Y_samples, Y_test = self.Y[sample_ix], self.Y[test_ix]
+            if method == 'NIPALS':
+                _, XL, _, YL, B = nipals(X_samples, Y_samples, self.ncomps,
+                                           n_iters=n_nipals_iters, tol=tol)
+            elif method == 'SIMPLS':
+                _, XL, _, YL, _, B= simpls(X_samples, Y_samples,
+                                                   self.ncomps)
+            elif method == 'W2A':
+                _, _, XL, YL, B = pls_w2a(X_samples, Y_samples, self.ncomps)
+            rss += np.sum((Y_test - X_test.dot(B))**2)/n_samples
+        self.crossval_rss = rss
+        
+
+        
+
+        
+        
 
             
             
