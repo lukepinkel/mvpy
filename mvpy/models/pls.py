@@ -491,7 +491,7 @@ class PLSR:
             elif method == 'W2A':
                 _, _, XL, YL, B = pls_w2a(X_samples, Y_samples, self.ncomps)
             ssr  = np.sum((Y_test - X_test.dot(B))**2)
-            r2 = 1 - ssr / np.sum((Y_test - Y_test.mean())**2)
+            r2 = 1 - ssr / np.sum((Y_test - Y_test.mean(axis=0))**2)
             rss += r2/n_samples
         self.crossval_rss = rss
         
