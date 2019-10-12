@@ -475,10 +475,10 @@ class PLSR:
             if vocal is True:
                 print(i)
     def cross_validate(self, n_samples=100, method='SIMPLS', n_nipals_iters=100,
-                       tol=1e-6):
+                       tol=1e-6, split_p=0.7):
         rss = 0.0
         for i in range(n_samples):
-            sample_ix = np.random.choice(self.n_obs, size=int(self.n_obs/2.0))
+            sample_ix = np.random.choice(self.n_obs, size=int(self.n_obs*0.7))
             test_ix = [x for x in np.arange(self.n_obs) if x not in sample_ix]
             X_samples, X_test = self.X[sample_ix], self.X[test_ix]
             Y_samples, Y_test = self.Y[sample_ix], self.Y[test_ix]
@@ -762,7 +762,7 @@ class sCCA:
         for i in range(n_iters):
             vxk, vyk = self._soft(wx - dx, ax/m2), self._soft(wy - dy, ay/m2)
             wxk = Bx.dot(xprod.dot(wy)+mu*(vxk+dx))
-            wyk = By.dot(xprod.T.dot(wx)+mu*(vyk+dy))
+            wyk = By.dot(xprod.T.dot(wxk)+mu*(vyk+dy))
             
             wxk/=np.linalg.norm(X.dot(wxk))
             wyk/=np.linalg.norm(Y.dot(wyk))
@@ -826,7 +826,7 @@ class sCCA:
             idx[ix] = 1.0
             idx = idx.astype(bool)
             Xtr, Ytr = X[idx], Y[idx]
-            Xte, Yte = X[1-idx], Y[1-idx]
+            Xte, Yte = X[(1-idx).astype(bool)], Y[(1-idx).astype(bool)]
             xvals_mu_i = []
             for mu_k in mu_range:
                 U, V = self._fit(Xtr, Ytr, n_comps=n_comps, mu=mu_k)
