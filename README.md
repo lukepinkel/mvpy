@@ -6,7 +6,7 @@ Currently includes rough implementations of
   - Exploratory factor analysis via the EFA class, fit through EM or Lawleys ML algorithm
   - Both via the FactorAnalysis class, fit through constrained Newtons method using a parameterization more robust to small unique variances
   - Factor rotation
-- Linear mixed models capable of handling multivariate models
+- Linear mixed models capable of handling multivariate models.  Note that the p-values presented in the results table should    not be taken seriously, as they are computed under the assumption of (n-p) degrees of freedom (n observations minus p features).   
 - Latent variable correlations for handling polychorric, polytomous and tetrachoric correlation
 - Partial least squares (soft modeling) techniques
   - Partial least squares covariance
