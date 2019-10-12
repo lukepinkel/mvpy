@@ -336,7 +336,7 @@ class LMM:
             JF_Omega = deriv_mats[key]
             g_i = JF_Omega.T.dot(dP) - JF_Omega.T.dot(PyPy)
             g.append(g_i)
-            g = np.concatenate(g)
+        g = np.concatenate(g)
         return linalg_utils._check_1d(g)
 
     def hessian(self, theta):
