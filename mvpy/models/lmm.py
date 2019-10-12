@@ -60,7 +60,7 @@ class LMM:
             n_vars = len(yvar)
         else:
             n_vars = 1
-
+        res_names = []
         for key in random_effects.keys():
             Ji = data_utils.dummy_encode(data[key], complete=True)
             Zij = patsy.dmatrix(random_effects[key], data=data,
@@ -82,6 +82,9 @@ class LMM:
                           'vcov': np.eye(k),
                           'params': linalg_utils.vech(np.eye(k)),
                           'acov': acov_i}
+            for name in Zij.columns:
+                res_names.append(key+' x '+name)
+        
 
         Z = np.concatenate(Z, axis=1)
 
@@ -89,7 +92,7 @@ class LMM:
         error_struct['vcov'] = np.eye(n_vars)
         error_struct['acov'] = np.eye(n_obs)
         error_struct['params'] = linalg_utils.vech(np.eye(n_vars))
-
+        res_names += ['error_var']
         if type(yvar) is str:
             y = data[[yvar]]
 
@@ -152,7 +155,7 @@ class LMM:
         self.error_struct = error_struct
         self.re_struct = re_struct
         self.ZoZ = ZoZ
-
+        self.res_names = res_names
         self.n_vars = n_vars
         self.XZY = np.block([X, Z, y])
         self.XZ = np.block([X, Z])
