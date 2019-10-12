@@ -75,7 +75,7 @@ class LMM:
                     acov_i = np.eye(Ji.shape[1])
             else:
                 acov_i = np.eye(Ji.shape[1])
-        re_struct[key] = {'n_units': Ji.shape[1],
+            re_struct[key] = {'n_units': Ji.shape[1],
                           'n_level_effects': Zij.shape[1],
                           'cov_re_dims': k,
                           'n_params': ((k + 1.0) * k) / 2.0,
