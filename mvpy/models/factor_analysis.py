@@ -636,7 +636,7 @@ class FactorAnalysis:
         self.res = pd.DataFrame(self.res, columns=['coefficient', 'SE', 't'])
         self.res['p value'] = sp.stats.t.sf(np.abs(self.res['t']), self.X.shape[0])
         if self.is_pd:
-            cols = ['Factor %i'%i for i in range(1, self.Lambda.shape[1]+1.0)]
+            cols = ['Factor %i'%i for i in range(1, int(self.Lambda.shape[1]+1.0))]
             self.Lambda = pd.DataFrame(self.Lambda, index=self.xcols,
                                            columns=cols)
             self.Phi = pd.DataFrame(self.Phi, columns=cols, index=cols)
