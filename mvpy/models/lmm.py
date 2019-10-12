@@ -10,6 +10,7 @@ import collections
 import numpy as np
 import scipy as sp
 import pandas as pd
+import scipy.stats
 import scipy.sparse as sps
 
 from ..utils import linalg_utils, data_utils
@@ -53,7 +54,7 @@ class LMM:
 
         n_obs = data.shape[0]
         X = patsy.dmatrix(fixed_effects, data=data, return_type='dataframe')
-
+        fixed_effects = X.columns
         Z = []
         re_struct = collections.OrderedDict()
         if type(yvar) is list:
@@ -82,8 +83,12 @@ class LMM:
                           'vcov': np.eye(k),
                           'params': linalg_utils.vech(np.eye(k)),
                           'acov': acov_i}
-            for name in Zij.columns:
-                res_names.append(key+' x '+name)
+            
+            names = np.array(Zij.columns.tolist())
+            names_a = names[np.triu_indices(k)[0]]
+            names_b = names[np.triu_indices(k)[1]]
+            for r in range(len(names_a)):
+                res_names.append(key+'|'+names_a[r]+' x '+names_b[r])
         
 
         Z = np.concatenate(Z, axis=1)
@@ -155,7 +160,7 @@ class LMM:
         self.error_struct = error_struct
         self.re_struct = re_struct
         self.ZoZ = ZoZ
-        self.res_names = res_names
+        self.res_names = res_names + fixed_effects.tolist()
         self.n_vars = n_vars
         self.XZY = np.block([X, Z, y])
         self.XZ = np.block([X, Z])
@@ -293,6 +298,10 @@ class LMM:
         res = pd.DataFrame(np.concatenate([self.params[:, None], self.b]),
                            columns=['Parameter Estimate'])
         res['Standard Error'] = np.concatenate([self.SE_theta, self.SE_b])
+        res['t value'] = res['Parameter Estimate'] / res['Standard Error']
+        res['p value'] = sp.stats.t.sf(np.abs(res['t value']),
+                                       X.shape[0]-len(self.params)) * 2.0
+        res.index = self.res_names
         self.res = res
 
     def predict(self, X=None, Z=None):
