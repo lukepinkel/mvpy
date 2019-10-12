@@ -26,30 +26,35 @@ class LMM:
         Parameters
         ----------
         fixed_effects: str
-          String formula containing the column names corresponding to the
-          fixed effect terms. This is to be evaluated by patsy
+            String formula containing the column names corresponding to the
+            fixed effect terms. This is to be evaluated by patsy
 
         random_effects: dict
-          Dictionary whose keys correspond to factors, and whose values are
-          formulas specifying the random effect terms.  The keys are evaluated
-          as categorical and dummy encoded.
+            Dictionary whose keys correspond to factors, and whose values are
+            formulas specifying the random effect terms.  The keys are evaluated
+            as categorical and dummy encoded.
 
         y: str or list
-          If y is a string, then a univariate linear mixed model is fit, but if
-          y is a list of m strings, then an m-variate linear mixed model is
-          fit. It is assumed that all fixed and random effects are identical
-          for all dependent variables.
+            If y is a string, then a univariate linear mixed model is fit, but if
+            y is a list of m strings, then an m-variate linear mixed model is
+            fit. It is assumed that all fixed and random effects are identical
+            for all dependent variables.
 
         data: DataFrame
-          Pandas DataFrame containing n_obs by n_features including the
-          relavent terms to the model
+            Pandas DataFrame containing n_obs by n_features including the
+            relavent terms to the model
 
-        error_structure: default None, str
-          Error structure defaults to iid, but a factor level may be provided
-          via a string referencing a column name, which will then be used to
-          constructthe error covariance.  Implemented for multivariate linear
-          models, where it is repeated across the multiple dependent variables,
-          and has the structure Cov(Error) = V_{m\\times m}\\otimes I_{n}
+        error_structure: str, default None
+            Error structure defaults to iid, but a factor level may be provided
+            via a string referencing a column name, which will then be used to
+            constructthe error covariance.  Implemented for multivariate linear
+            models, where it is repeated across the multiple dependent variables,
+            and has the structure Cov(Error) = V_{m\\times m}\\otimes I_{n}
+        acov: dict, default None
+            Similar to random_effects, dictionary with keys indicating factors
+            except the values need to be matrices that specify the covariance
+            among observational units (row covariance)
+
         '''
 
         n_obs = data.shape[0]
