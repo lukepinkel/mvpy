@@ -332,7 +332,7 @@ class SEM:
 
   
     def implied_cov(self, LA, BE, PH, TH):
-        IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
+        IB = np.linalg.pinv(linalg_utils.mat_rconj(BE))
         Sigma = linalg_utils.mdot([LA, IB, PH, IB.T, LA.T]) + TH
         return Sigma
     
@@ -348,7 +348,7 @@ class SEM:
             params = self.params
         LA = linalg_utils.invec(params[:self.k1], self.p, self.k)
         BE = linalg_utils.invec(params[self.k1:self.k2], self.k, self.k)
-        IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
+        IB = np.linalg.pinv(linalg_utils.mat_rconj(BE))
         PH = linalg_utils.invech(params[self.k2:self.k3])
         TH = linalg_utils.invech(params[self.k3:])
         return LA, BE, IB, PH, TH
@@ -427,7 +427,7 @@ class SEM:
         
         Vrob = V.dot(linalg_utils.mdot([G.T, W, Gadf, W, G])).dot(V)
         W /= 4.0
-        U = W - W.dot(G).dot(np.linalg.inv(G.T.dot(W).dot(G)).dot(G.T).dot(W))
+        U = W - W.dot(G).dot(np.linalg.pinv(G.T.dot(W).dot(G)).dot(G.T).dot(W))
         scale = np.trace(U.dot(Gadf))
         return Vrob, scale
 
