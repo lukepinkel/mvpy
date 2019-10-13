@@ -166,8 +166,17 @@ def agfi(Sigma, S, df):
     y = 1.0 - (t / (2.0*df)) * (1.0-y)
     return y
 
+def sumsqr(x):
+    return np.sum(x**2, axis=0)
 
+def sumsqt(x):
+    return np.sum(x**2)
 
+def meansqr(x):
+    return np.sum(x**2, axis=0)/len(x)
+
+def meansqt(x):
+    return np.sum(x**2)/(x.shape[0] * x.shape[1])
 
 def polyex(x, tau, rho):
     return (tau - rho*x) / sqrt(1-rho**2)
