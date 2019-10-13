@@ -15,7 +15,11 @@ import scipy as sp
 import scipy.stats
 import seaborn as sns
 
-
+'''
+This example demonstrates how one would go about adding a unique 
+fixed effect for each dependent variable, which is a little messy,
+but nevertheless feasable; future updates to make this easy are planned
+'''
 K = np.array([[1.0, 1.0, 0.5, 0.5, 0.125],
               [1.0, 1.0, 0.5, 0.5, 0.125],
               [0.5, 0.5, 1.0, 0.5, 0.125],
@@ -90,6 +94,8 @@ lmm_mod.A = np.block([[X, Z], [np.zeros((Z.shape[1], X.shape[1])),
 
 
 lmm_mod.fit(hess_opt=True)
+sns.jointplot(lmm_mod.y, lmm_mod.X.dot(lmm_mod.b) + lmm_mod.Z.dot(lmm_mod.u),
+              stat_func=sp.stats.pearsonr)
 
-
-
+sns.jointplot(lmm_mod.y, lmm_mod.X.dot(lmm_mod.b),
+              stat_func=sp.stats.pearsonr)
