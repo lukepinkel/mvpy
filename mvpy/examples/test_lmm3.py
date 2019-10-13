@@ -94,6 +94,7 @@ lmm_mod.A = np.block([[X, Z], [np.zeros((Z.shape[1], X.shape[1])),
 
 
 lmm_mod.fit(hess_opt=True)
+
 sns.jointplot(lmm_mod.y, lmm_mod.X.dot(lmm_mod.b) + lmm_mod.Z.dot(lmm_mod.u),
               stat_func=sp.stats.pearsonr)
 
