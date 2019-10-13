@@ -8,14 +8,16 @@ Created on Wed Sep 11 18:14:31 2019
 
 import numpy as np
 import pandas as pd
-
+import scipy as sp
+import scipy.stats
+import numpy.ma
 from numpy import log, exp, sqrt, eye, dot, trace, pi
 from numpy.linalg import slogdet, pinv
 from scipy.special import erf, erfinv
 from scipy.stats import chi2 as chi2_dist
 from scipy.optimize import minimize #analysis:ignore
 
-from .base_utils import corr, check_type #analysis:ignore
+from .base_utils import corr, check_type, valid_overlap #analysis:ignore
 from .linalg_utils import _check_1d, _check_np
 
 def norm_pdf(x, mu=0, s=1):
@@ -309,7 +311,73 @@ def msa(R):
     res = np.linalg.norm(Ri) / (np.linalg.norm(Q) + np.linalg.norm(Ri))
     return res
 
+class RobustCorr:
 
+    
+    def fun(self, X):
+        X, xcols, xix, x_is_pd = check_type(X)
+        
+        xdev = X - self.est_loc(X)
+        psix = self.mfun(xdev)
+        S = self.robust_crossprod(psix)
+        D = np.diag(1/np.sqrt(np.diag(S)))
+        R = D.dot(S).dot(D)
+        if (x_is_pd):
+            R = pd.DataFrame(R, index=xcols, columns=xcols)
+        return R
+    
+    __call__ = fun
+
+class QuadrantSignedCorr(RobustCorr):
+    
+    def __init__(self):
+        super(QuadrantSignedCorr, self).__init__()
+    
+    def est_loc(self, X):
+        return np.median(X, axis=0)
+    
+    def mfun(self, X):
+        return np.sign(X)
+    
+    def robust_crossprod(self, X):
+        return X.T.dot(X) / valid_overlap(X, X)
+
+class GeneralRobustCorr(RobustCorr):
+    
+    def __init__(self, alpha=0.1):
+        super(GeneralRobustCorr, self).__init__()
+        self.a = alpha*100
+
+    def est_loc(self, X):
+        return np.median(X, axis=0)
+    
+    def mfun(self, X):
+        return X
+    
+    def robust_crossprod(self, X):
+        xu = sp.stats.scoreatpercentile(X, 100 - self.a, axis=0)
+        xl = sp.stats.scoreatpercentile(X, self.a, axis=0)
+                
+        X[(X>xu)|(X<xl)] = np.nan
+        Xm = np.ma.masked_invalid(X)
+        XtX = np.asarray(Xm.T.dot(Xm)) / valid_overlap(X, X)
+        return XtX
+    
+def grcorr(X, alpha=0.1):
+    grc = GeneralRobustCorr(alpha)
+    R = grc(X)
+    return R
+
+def qscorr(X):
+    qsc = QuadrantSignedCorr()
+    R = qsc(X)
+    return R
+       
+        
+            
+        
+        
+        
     
     
     
