@@ -255,7 +255,7 @@ class SEM:
         self.S = linalg_utils.cov(Z) #True covariance
         self.LA = LA
         self.BE = BE
-        self.IB = np.linalg.inv(linalg_utils.mat_rconj(BE))
+        self.IB = np.linalg.pinv(linalg_utils.mat_rconj(BE))
         self.PH = PH
         self.TH = TH
         self.idx = self.mat_to_params(idx1, idx2, idx3, idx4) #Free parameter index
