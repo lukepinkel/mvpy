@@ -64,8 +64,10 @@ class LMM:
         re_struct = collections.OrderedDict()
         if type(yvar) is list:
             n_vars = len(yvar)
+            yvnames = yvar
         else:
             n_vars = 1
+            yvnames = [yvar]
         res_names = []
         for key in random_effects.keys():
             Ji = data_utils.dummy_encode(data[key], complete=True)
@@ -88,8 +90,12 @@ class LMM:
                           'vcov': np.eye(k),
                           'params': linalg_utils.vech(np.eye(k)),
                           'acov': acov_i}
-            
-            names = np.array(Zij.columns.tolist())
+            if len(yvnames)>1:
+                names = [x+": "+y for x in yvnames for y in
+                         Zij.columns.tolist()]
+                names = np.array(names)
+            else:  
+                names = np.array(Zij.columns.tolist())
             names_a = names[np.triu_indices(k)[0]]
             names_b = names[np.triu_indices(k)[1]]
             for r in range(len(names_a)):
@@ -102,7 +108,16 @@ class LMM:
         error_struct['vcov'] = np.eye(n_vars)
         error_struct['acov'] = np.eye(n_obs)
         error_struct['params'] = linalg_utils.vech(np.eye(n_vars))
-        res_names += ['error_var']
+        if len(yvnames)>1&(type(yvnames) is list):
+            tmp = []
+            for i, x in enumerate(yvnames):
+                for j, y in enumerate(yvnames):
+                    if i <= j:
+                        tmp.append(x+": "+y+" error_var")
+            res_names += tmp
+        else:  
+            res_names += ['error_var']
+            
         if type(yvar) is str:
             y = data[[yvar]]
 
