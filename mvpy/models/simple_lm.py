@@ -132,7 +132,7 @@ class LM:
             ci = (100.0 - ci) / 200.0
             cip, cim = 1.0 - ci, ci
             zplus, zminus = sp.stats.norm.ppf(cip), sp.stats.norm.ppf(cim)
-            s2 = linalg_utils.check_0d(self.error_var)
+            s2 = np.sqrt(linalg_utils._check_0d(self.error_var))
             yhat['CI%i-'%nme] = yhat['yhat'] + zminus * s2
             yhat['CI%i+'%nme] = yhat['yhat'] + zplus * s2
         if pi is not None:
@@ -140,10 +140,10 @@ class LM:
             pi = (100.0 - pi) / 200.0
             pip, pim = 1.0 - pi, pi
             zplus, zminus = sp.stats.norm.ppf(pip), sp.stats.norm.ppf(pim)
-            error_var = linalg_utils.check_0d(self.error_var)
-            s2 = X.dot(self.gram).dot(X.T) * error_var
+            error_var = linalg_utils._check_0d(self.error_var)
+            s2 = np.diag(X.dot(self.gram).dot(X.T)) * error_var
             yhat['PI%i-'%nme] = yhat['yhat'] + s2 * zminus
-            yhat['CI%i+'%nme] = yhat['yhat'] + s2 * zplus
+            yhat['PI%i+'%nme] = yhat['yhat'] + s2 * zplus
         return yhat
         
     
