@@ -381,7 +381,49 @@ def qscorr(X):
     qsc = QuadrantSignedCorr()
     R = qsc(X)
     return R
-       
+
+
+class MultivarAssociation:
+    
+    def __init__(self, SSE, SSH, SST, p, q, SSE_inv=None, SST_inv=None):
+        self.p, self.q, self.s = p, q, np.min(p, q)
+        k = p**2*q**2
+        if k<=4:
+            g = 1
+        else:
+            g = np.sqrt((k - 4) / (p**2 + p**2 - 5))
+        self.g = g
+        if SST_inv is None:
+            SST_inv = np.linalg.pinv(SST)
+        if SSE_inv is None:
+            SSE_inv = np.linalg.pinv(SSE)
+        
+        self.SSE, self.SSH, self.SST = SSE, SSH, SST
+        self.SSE_inv, self.SST_inv = SSE_inv, SST_inv
+        self.dfe = SSH.shape[0] - p
+    
+    def hotelling_lawley(self):
+        hlt = np.trace(self.SSH.dot(self.SSE_inv))
+        u = hlt / self.s
+        eta = u / (1.0 + u)
+        return hlt, eta
+    def pillai_bartlett_trace(self):
+        pbt = np.trace(self.SSH.dot(self.SST_inv))
+        eta = pbt / self.s
+        return pbt, eta
+    
+    def wilks_likelihood(self):
+        wlk = np.linalg.det(self.SSH.dot(self.SST_inv))
+        eta = 1 - np.power(wlk, 1.0/self.g)
+        return wlk, eta
+
+    def roy_largest_root(self):
+        u, V = np.linalg.eigh(self.SSH.dot(self.SST_inv))
+        rlr = np.max(u)
+        return rlr, rlr
+    
+
+     
         
             
         
