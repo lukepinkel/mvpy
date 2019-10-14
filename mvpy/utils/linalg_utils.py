@@ -1004,8 +1004,9 @@ def woodbury_inversion(Umat, Vmat=None, C=None, Cinv=None, A=None, Ainv=None):
         Cinv = einv(C)
     if Vmat is None:
         Vmat = Umat.T
-    H = einv(Cinv + Vmat.dot(Ainv).dot(Umat))
-    W = Ainv - Ainv.dot(Umat).dot(H).dot(Vmat).dot(Ainv)
+    T = Ainv.dot(Umat)
+    H = np.linalg.inv(Cinv + Vmat.dot(T))
+    W = Ainv - np.linalg.multi_dot([T, H, Vmat, Ainv])
     return W
     
 def chol(A):
