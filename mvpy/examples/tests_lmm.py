@@ -49,6 +49,7 @@ y = "Weight"
 lmm_mod = mv.LMM(fe, re, y, data)
 lmm_mod.fit()
 
+
 lmm_mod.params
 np.linalg.norm(lmm_mod.y - lmm_mod.X.dot(lmm_mod.b))
 np.linalg.norm(lmm_mod.y - lmm_mod.X.dot(lmm_mod.b) - lmm_mod.Z.dot(lmm_mod.u))
