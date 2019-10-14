@@ -385,8 +385,8 @@ def qscorr(X):
 
 class MultivarAssociation:
     
-    def __init__(self, SSE, SSH, SST, p, q, SSE_inv=None, SST_inv=None):
-        self.p, self.q, self.s = p, q, np.min(p, q)
+    def __init__(self, SSE, SSH, SST, n, p, q, SSE_inv=None, SST_inv=None):
+        self.p, self.q, self.s = p, q, np.minimum(p, q)
         k = p**2*q**2
         if k<=4:
             g = 1
@@ -400,7 +400,35 @@ class MultivarAssociation:
         
         self.SSE, self.SSH, self.SST = SSE, SSH, SST
         self.SSE_inv, self.SST_inv = SSE_inv, SST_inv
-        self.dfe = SSH.shape[0] - p
+        dfe = n - p
+        self.dfe = dfe
+        
+        df_hlt = (dfe**2 - dfe*(2*q+3)+q*(q+3)) * (p*q+2)
+        df_hlt/= dfe * (p + q + 1) - (p + 2 * q + q**2 - 1)
+        df_hlt+=4
+        
+        df_pbt = (self.s * dfe + self.s - q)
+        df_pbt*= (dfe+p+2)*(dfe + p - 1)
+        df_pbt/= dfe * (dfe + p - q)
+        df_pbt -= 2
+        df_pbt *= (dfe + self.s - q)/(dfe + p)
+        
+        df_wlk = g * (dfe - (q - p + 1) / 2) - (p*q-2) / 2
+        
+        df2_pbt = self.s * (self.dfe+self.s - q) * (self.dfe + p + 2)
+        df2_pbt*= (self.dfe + p - 1)
+        df2_pbt/= (self.dfe * (self.dfe + p - q))
+        df2_pbt*= (p*q) / (self.s * (self.dfe + self.p))
+        
+        
+        self.df1_hlt = df_hlt
+        self.df2_hlt = p * q
+        self.df1_pbt = df_pbt
+        self.df2_pbt = df2_pbt
+        self.df1_wlk = df_wlk
+        self.df2_wlk = p * q
+        
+        
     
     def hotelling_lawley(self):
         hlt = np.trace(self.SSH.dot(self.SSE_inv))
@@ -413,7 +441,7 @@ class MultivarAssociation:
         return pbt, eta
     
     def wilks_likelihood(self):
-        wlk = np.linalg.det(self.SSH.dot(self.SST_inv))
+        wlk = np.linalg.det(self.SSE.dot(self.SST_inv))
         eta = 1 - np.power(wlk, 1.0/self.g)
         return wlk, eta
 
