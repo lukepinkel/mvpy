@@ -10,7 +10,8 @@ from mvpy.api import SEMModel
 import pandas as pd
 import numpy as np
 
-data = pd.read_csv("/users/lukepinkel/Downloads/bollen.csv", index_col=0)
+data = pd.read_csv(("https://raw.githubusercontent.com/vincentarelbundock/Rdatasets"
+                "/master/csv/sem/Bollen.csv"), index_col=0)
 data = data[['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'y4', 'y5',
              'y6', 'y7', 'y8', ]]
 

@@ -35,7 +35,8 @@ smglm.params
 
 #Poisson 1
 
-data = pd.read_csv("/users/lukepinkel/Downloads/poisson_sim.csv", index_col=0)
+data = pd.read_csv("https://stats.idre.ucla.edu/stat/data/poisson_sim.csv")
+data.index = data['id']
 
 smglm = sm.formula.glm("num_awards~C(prog)+math", data=data,
                        family=sm.families.Poisson()).fit()
