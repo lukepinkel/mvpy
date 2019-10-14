@@ -355,8 +355,7 @@ class LMM:
         G, Ginv, SigA, R, Rinv, SigE = self.params2mats(theta)
         deriv_mats = self.deriv_mats
         X, Z, y = self.X, self.Z, self.y
-        #W = linalg_utils.woodbury_inversion(Z, C=G, A=R) not actually faster
-        W = np.linalg.inv(Z.dot(G).dot(Z.T)+R)
+        W = linalg_utils.woodbury_inversion(Z, Cinv=Ginv, Ainv=Rinv) 
         XtW = X.T.dot(W)
         XtWX_inv = linalg_utils.einv(XtW.dot(X))
         P = W - XtW.T.dot(XtWX_inv).dot(XtW)
@@ -378,8 +377,7 @@ class LMM:
         G, Ginv, SigA, R, Rinv, SigE = self.params2mats(theta)
         jac_mats = self.jac_mats
         X, Z, y = self.X, self.Z, self.y
-        #W = linalg_utils.woodbury_inversion(Z, C=G, A=R) not actually faster
-        W = np.linalg.inv(Z.dot(G).dot(Z.T)+R)
+        W = linalg_utils.woodbury_inversion(Z, Cinv=Ginv, Ainv=Rinv)
         XtW = X.T.dot(W)
         XtWX_inv = linalg_utils.einv(XtW.dot(X))
         P = W - XtW.T.dot(XtWX_inv).dot(XtW)
