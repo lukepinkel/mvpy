@@ -167,6 +167,9 @@ class GLM:
                              hess=self.hessian, **optimizer_kwargs)        
         self.optimizer = optimizer
         self.beta = optimizer.x
+        self.sse = np.sum((self.Y[:, 0]-self.predict())**2)
+        if self.f.dist == 'normal':
+            self.f.phi = self.sse / (self.n_obs - self.X.shape[1])
         self.hess = self.hessian(self.beta)
         self.grad = self.gradient(self.beta)
         self.vcov = linalg_utils.einv(self.hess)
@@ -179,7 +182,7 @@ class GLM:
                                            columns=['beta', 'SE', 't', 'p'])
         self.LLA = self.loglike(self.beta)
         self.LLR = 2.0*(self.LL0-self.LLA)
-        self.sse = np.sum((self.Y[:, 0]-self.predict())**2)
+    
         self.sst = np.var(self.Y)*self.Y.shape[0]
         n, p = self.X.shape[0], self.X.shape[1]
         yhat = self.predict()
@@ -441,11 +444,11 @@ class Normal:
         return mu
     
     def var_func(self, T):
-        V = np.array([1.0])
+        V = T*0.0+1.0
         return V
                 
     def d2canonical(self, mu):
-        res = 0.0*mu
+        res = 0.0*mu+1.0
         return res
     
     def unpack_params(self, params):

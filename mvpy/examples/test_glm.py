@@ -64,7 +64,7 @@ x = np.arange(nobs2)
 np.random.seed(54321)
 X = np.column_stack((x,x**2))
 X = sm.add_constant(X, prepend=False)
-lny = np.exp(-(.03*x + .0001*x**2 - 1.0)) + .001 * np.random.rand(nobs2)
+lny = np.exp(-(.03*x + .0001*x**2 - 1.0)) + .1 * np.random.rand(nobs2)
 
 smglm = sm.GLM(lny, X, family=sm.families.Gaussian(sm.families.links.log)).fit()
 print(smglm.summary())
@@ -72,8 +72,7 @@ print(smglm.summary())
 data = pd.DataFrame(np.concatenate([X, lny[:, None]], axis=1))
 data.columns = ['x1', 'x2', 'c', 'y']
 mod = mv.GLM("y ~ x1 + x2", data=data, 
-               fam=glm2.Normal(1.0531e-07, link=glm2.LogLink()))
-mod.theta_init /= 1e10
+               fam=glm2.Normal(0.0010218, link=glm2.LogLink()))
 mod.fit()
 
 
