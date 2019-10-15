@@ -302,8 +302,7 @@ class LMM:
         G, Ginv, SigA, R, Rinv, SigE = self.params2mats(res.x)
         self.G, self.Ginv, self.R, self.Rinv = G, Ginv, R, Rinv
         self.SigA, self.SigE = SigA, SigE
-        #W = linalg_utils.woodbury_inversion(self.Z, C=G, A=R)
-        W = np.linalg.inv(self.Z.dot(G).dot(self.Z.T)+R)
+        W = linalg_utils.woodbury_inversion(self.Z, C=G, A=R)
         X = self.X
         XtW = X.T.dot(W)
         self.optimizer = res
