@@ -30,7 +30,7 @@ from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis
 from mvpy.models.lmm import LMM
 from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr
 from mvpy.models.simple_lm import LM
-from mvpy.models.glm2 import GLM, Bernoulli, Poisson, LogitLink, ProbitLink, LogLink, ReciprocalLink
+from mvpy.models.glm2 import GLM, Bernoulli, Poisson, Normal, LogitLink, ProbitLink, LogLink, ReciprocalLink
 from mvpy.models.nb2 import NegativeBinomial
 
 

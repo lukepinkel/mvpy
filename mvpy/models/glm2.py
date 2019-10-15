@@ -72,6 +72,8 @@ class MinimalGLM:
     
     def fit(self, verbose=2):
         theta = np.ones(self.X.shape[1])/2.0
+        if self.f.dist == 'normal':
+            theta *= 1e-10
         optimizer = sp.optimize.minimize(self.loglike, theta, jac=self.gradient, 
                              hess=self.hessian, method='trust-constr',
                              options={'verbose':0})
@@ -105,7 +107,8 @@ class GLM:
         self.jn = np.ones((self.n_obs, 1))
         self.YtX = self.Y.T.dot(self.X)
         self.theta_init = np.ones(self.n_feats)/self.n_feats
-        
+        if self.f.dist == 'normal':
+            self.theta_init *= 1e-10
         
     def loglike(self, params):
         beta, phi = self.f.unpack_params(params)
@@ -234,6 +237,7 @@ class GLM:
 class Bernoulli:
     
     def __init__(self, link='canonical'):
+        self.dist = 'bernoulli'
         if link == 'canonical':
             self.link=LogitLink()
             self.type_='canonical'
@@ -297,6 +301,7 @@ class Bernoulli:
 class Poisson:
     
     def __init__(self, link='canonical'):
+        self.dist = 'poisson'
         if link == 'canonical':
             self.link=LogLink()
             self.type_='canonical'
@@ -350,6 +355,7 @@ class Poisson:
 class Gamma:
     
     def __init__(self, link='canonical'):
+        self.dist = 'gamma'
         if link == 'canonical':
             self.link=ReciprocalLink()
             self.type_='canonical'
@@ -405,6 +411,7 @@ class Gamma:
 class Normal:
     
     def __init__(self, phi, link='canonical'):
+        self.dist = 'normal'
         self.phi = phi
         if link == 'canonical':
             self.link=IdentityLink()
