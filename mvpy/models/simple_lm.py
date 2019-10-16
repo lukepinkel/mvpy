@@ -191,7 +191,6 @@ class MassUnivariate:
         self.res = res
 
 
-
 class LinearModel:
 
     def __init__(self, X, Y, C=None, U=None, T0=None):
