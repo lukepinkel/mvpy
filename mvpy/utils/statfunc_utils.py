@@ -383,7 +383,7 @@ def qscorr(X):
     return R
 
 
-class MultivarAssociation:
+class MultivarAssociationA:
     
     def __init__(self, SSE, SSH, SST, n, p, q, SSE_inv=None, SST_inv=None):
         self.p, self.q, self.s = p, q, np.minimum(p, q)
@@ -449,14 +449,4 @@ class MultivarAssociation:
         u, V = np.linalg.eigh(self.SSH.dot(self.SST_inv))
         rlr = np.max(u)
         return rlr, rlr
-    
 
-     
-        
-            
-        
-        
-        
-    
-    
-    

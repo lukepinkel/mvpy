@@ -98,14 +98,22 @@ def commutation_matrix(p, q):
     Matrix K_{np} such that for an n\times p matrix X, vec(X^{T})=K vec(X)
     '''
     K = np.eye(p * q)
-    indices = np.arange(p * q).reshape((p, q), order='F')
-    return K.take(indices.ravel(), axis=0)
+    #indices = np.arange(p * q).reshape((p, q), order='F')
+    ix = np.arange(p * q).reshape((p, q), order='C').reshape(p*q, order='F')
+    return K.take(ix, axis=0)
 
 def duplication_matrix(n):
     '''
     Matrix D_{p} such that for a p\times p matrix X, D vech(X)= vec(X)
     '''
-    return np.array([invech(x.astype(int)).ravel() for x in np.eye(n * (n + 1) // 2)]).T
+    D = [invech(x.astype(int)).ravel() for x in np.eye(n * (n + 1) // 2)]
+    D = np.array(D).T
+    return D
+
+def psuedo_duplication_matrix(n):
+    D = duplication_matrix(n)
+    Dp = np.linalg.pinv(np.dot(D.T, D)).dot(D.T)
+    return Dp
 
 def elimination_matrix(n):
     '''
@@ -116,6 +124,9 @@ def elimination_matrix(n):
 
 def dmat(n):
     return duplication_matrix(n)
+
+def dpmat(n):
+    return psuedo_duplication_matrix(n)
 
 def lmat(n):
     return elimination_matrix(n)
@@ -138,7 +149,6 @@ def pre_post_elim(X):
     n, p = int(sqrt(n)), int(sqrt(p))
     Y = mdot([dmat(n).T, X, dmat(p)])
     return Y
-
 
 def khatri_rao(X, Y):
     X, xcols, xix, x_is_pd = check_type(X)
@@ -169,8 +179,6 @@ def sparse_cholesky(A, permute='MMD_AT_PLUS_A'):
     L, U = lu.L, lu.U
     L = Pr.T*L.dot(sps.diags(U.diagonal()**0.5))
     return L
-
-
 
 def nmat(n):
     Nn = eye(n**2)+kmat(n, n)
@@ -227,7 +235,7 @@ def mdot(vars_):
 
 def normalize_diag(X):
     X, cols, ix, is_pd = check_type(X)
-    D = diag(sqrt(1/diag(X)))
+    D = diag(sqrt(1.0/diag(X)))
     Xh = multi_dot([D, X, D])
     return Xh
 
@@ -962,17 +970,17 @@ def rotate(A, method, T=None, tol=1e-9, alpha=1.0,
             gamma = custom_gamma
         rotation_type = 'oblique'
         
-    if rotation_type is 'orthogonal':
+    if rotation_type == 'orthogonal':
         T = rotate_ortho(A, T=T, alpha=alpha, gamma=gamma, tol=tol, n_iters=n_iters)
         L = dot(A, T)
-        if method is 'promax':
+        if method == 'promax':
             H = abs(L)**k/L
             V = multi_dot([pinv(dot(A.T, A)), A.T, H])
             D = diag(sqrt(diag(inv(dot(V.T, V)))))
             T = inv(dot(V, D)).T
             L = dot(A, T)
             
-    elif rotation_type is 'oblique':
+    elif rotation_type == 'oblique':
         T = rotate_obli(A, T=T, alpha=alpha, gamma=gamma, tol=tol, n_iters=n_iters)
         L = dot(A, inv(T).T)
     if type(A) is pd.DataFrame:

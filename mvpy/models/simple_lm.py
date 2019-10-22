@@ -25,8 +25,9 @@ class LM:
         yp = linalg_utils._check_np(y)
         self.coefs = linalg_utils._check_np(self.gram.dot(X.T)).dot(yp)
         self.yhat = linalg_utils._check_np(X).dot(self.coefs)
-        self.error_var = np.sum((linalg_utils._check_np(y) - self.yhat)**2,
-                                axis=0) / (X.shape[0] - X.shape[1] - 1)
+        self.sse = np.sum((linalg_utils._check_np(y) - self.yhat)**2,
+                          axis=0)
+        self.error_var = self.sse / (X.shape[0] - X.shape[1] - 1)
         self.coefs_se = np.sqrt(np.diag(self.gram*self.error_var))
         self.ll = self.loglike(self.coefs, self.error_var)
         beta = np.concatenate([linalg_utils._check_2d(self.coefs),
@@ -81,11 +82,9 @@ class LM:
         return res
 
     def loglike(self, coefs, error_var):
-        n = self.X.shape[0]
-        k = n/2.0 * np.log(2*np.pi)
-        ldt = n/2.0*np.log(error_var)
-        dev = 0.5
-        ll = k + ldt + dev
+        yhat = linalg_utils._check_np(self.X).dot(coefs)
+        error = linalg_utils._check_np(self.y) - yhat
+        ll = sp.stats.norm.logpdf(error, loc=0, scale=error_var**.5).sum()
         return ll
 
     def _htest(self, X):
@@ -255,15 +254,22 @@ class LinearModel:
             g = 1
         else:
             g = (a2*b2-4) / (a2 + b2 - 5)
-        w, _ = np.linalg.eig(Omega)
+        
+        rho2, _ = np.linalg.eig(Sh.dot(np.linalg.inv(Sh+Se)))
         s = np.min([a, b])
-        rho2 = w / (w + self.n_obs)
-
-        hlt = np.sum(rho2/(1-rho2))
-        pbt = np.sum(rho2)
-        wlk = np.product(1-rho2)
-        test_stats = np.array([hlt, pbt, wlk])
-
+        tst_hlt = np.sum(rho2/(1-rho2))
+        tst_pbt = np.sum(rho2)
+        tst_wlk = np.product(1-rho2)
+        
+        eta_hlt = (tst_hlt/s) / (1 + tst_hlt/s)
+        eta_pbt = tst_pbt / s
+        eta_wlk = 1 - np.power(tst_wlk, (1/g))
+        
+        test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk]).T
+        effect_sizes = np.vstack([eta_hlt, eta_pbt, eta_wlk]).T
+        test_stats = pd.DataFrame(test_stats, columns=['HLT', 'PBT', 'WLK'])
+        effect_sizes = pd.DataFrame(effect_sizes, columns=['HLT', 'PBT', 'WLK'])
+        
         df_hlt1 = a * b
         df_wlk1 = a * b
 
@@ -282,19 +288,18 @@ class LinearModel:
         df_pbt2 *= (dfe + s - b) / (dfe + a)
 
         df_wlk2 = g * (dfe - (b - a + 1) / 2) - (a * b - 2) / 2
-        u = hlt / s
-        effects = np.array([u / (1 + u), pbt / s, 1 - np.power(wlk, 1.0/g)])
-        df1 = np.array([df_hlt1, df_wlk1, df_pbt1])
-        df2 = np.array([df_hlt2, df_wlk2, df_pbt2])
-        sumstats = np.vstack([test_stats, effects, df1, df2]).T
-        sumstats = pd.DataFrame(sumstats, index=['Hotelling Trace',
-                                                 'Pillai Trace',
-                                                 'Wilks Lambda'])
-        sumstats.columns = ['Test Stat', 'Effect Size', 'df1', 'df2']
-        eta = sumstats['Effect Size']
-        df1, df2 = sumstats['df1'], sumstats['df2']
-        sumstats['F-value'] = (eta / df1) / ((1 - eta) / df2)
-        sumstats['P-value'] = sp.stats.f.sf(sumstats['F-value'],
-                                            sumstats['df1'],
-                                            sumstats['df2'])
+        df1 = np.array([df_hlt1, df_pbt1, df_wlk1])
+        df2 = np.array([df_hlt2, df_pbt2, df_wlk2])
+        f_values = (effect_sizes / df1) / ((1 - effect_sizes) / df2)
+        p_values = sp.stats.f.sf(f_values, df1, df2)
+        p_values = pd.DataFrame(p_values, columns=effect_sizes.columns)
+        df1 = pd.DataFrame(df1, index=effect_sizes.columns).T
+        df2 = pd.DataFrame(df2, index=effect_sizes.columns).T
+        
+        sumstats = pd.concat([f_values, df1, df2, p_values])
+        sumstats.index = ['F-values', 'df1', 'df2', 'P-values']
+        sumstats = sumstats.T
         return sumstats
+    
+    
+    

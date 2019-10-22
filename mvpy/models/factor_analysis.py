@@ -18,18 +18,16 @@ from ..utils.base_utils import corr, cov, check_type
 
 
 class EFA:
-    
+
     def __init__(self, data, init_psi='multi_corr', method='corr',
                  n_iters=1000):
-        if method=='corr':
+        if method == 'corr':
             R = corr(data)
             if np.min(np.linalg.eig(R)[0]) < 0:
                 R = linalg_utils.near_psd(R)
-        elif method=='cov':
+        elif method == 'cov':
             R = cov(data)
         u, V = linalg_utils.sorted_eig(R)
-        
-        
         self.init_psi = init_psi
         self.n_iters = n_iters
         self.eig_expvar = u / u.sum()
@@ -42,21 +40,18 @@ class EFA:
             self.ix = data.index
         else:
             self.cols, self.ix = None, None
-        
-               
+
         self.MSA = statfunc_utils.msa(R)
-        
-    
-    
+
     def _fa_log_likelihood(self, R, A, psi):
         '''
         Computes the log likelihood of a factor analysis model
-        
+
         Parameters:
             R: Correlation matrix
             A: Loadings matrix
             psi: uniqueness, the complement of communalities
-        
+
         Returns:
             ll: log likelihood without the -n/2 term
         '''
@@ -64,11 +59,12 @@ class EFA:
         lnS = np.log(np.linalg.det(Sigma))
         ll = np.trace(np.dot(Sigma, R)) + lnS
         return ll
-    
-    def _fa_principal_factor(self, R, A, psi, ncomps, n_iters=100, tol=1e-6, vocal=False):
+
+    def _fa_principal_factor(self, R, A, psi, ncomps, n_iters=100, tol=1e-6,
+                             vocal=False):
         '''
         Principal axis factor analysis
-        
+
         Parameters:
             R: Correlation matrix
             A: Initial loadings matrix, normally principal components
@@ -77,7 +73,7 @@ class EFA:
             n_iters: Number of iterations
             tol: Tolerance before convergance
             vocal: Whether or not ot print iterations
-        
+
         Returns:
             A: Factor loading matrix
             psi: uniqueness
@@ -86,21 +82,22 @@ class EFA:
         old_h = np.diag(Rh)
         for i in range(n_iters):
             u, V = np.linalg.eig(Rh)
-            A = np.dot(V[:, :ncomps], np.diag(np.sqrt(np.maximum(u[:ncomps], 0))))
+            A = np.dot(V[:, :ncomps], np.diag(np.sqrt(np.maximum(u[:ncomps],
+                       0))))
             Rh = linalg_utils.replace_diagonal(Rh, np.diag((A**2).sum(axis=1)))
-            if vocal==True:
+            if vocal:
                 print(i)
             if np.linalg.norm(old_h - np.diag(Rh)) < tol:
                 break
             old_h = np.diag(Rh)
         psi = 1-np.diag(Rh)
         return A, psi
-    
-    
+
+
     def _fa_maximum_likelihood(self, R, A, psi, ncomps, n_iters=100, tol=1e-6, vocal=False):
         '''
         Lawley's traditional maximum likelihood estimation of factor analysis.
-        
+
         Parameters:
             R: Correlation matrix
             A: Initial loadings matrix, normally principal components
@@ -109,7 +106,7 @@ class EFA:
             n_iters: Number of iterations
             tol: Tolerance before convergance
             vocal: Whether or not ot print iterations
-        
+
         Returns:
             A: Factor loading matrix
             psi: Uniqueness
@@ -120,22 +117,22 @@ class EFA:
             Psih = np.diag(np.sqrt(1/psi))
             Rh = linalg_utils.mdot([Psih, R, Psih])
             u, V = np.linalg.eig(Rh)
-            A = np.dot(np.sqrt(np.diag(psi)), np.dot(V[:, :ncomps], 
+            A = np.dot(np.sqrt(np.diag(psi)), np.dot(V[:, :ncomps],
                        np.diag(np.sqrt(np.maximum(u[:ncomps] - 1, 1e-9)))))
             psi = np.diag(R - np.dot(A, A.T))
             if np.linalg.norm(psi - old_psi) < tol:
                 break
-            if vocal==True:
+            if vocal:
                 print(i, np.linalg.norm(psi - old_psi))
             old_psi = psi
         ll = self._fa_log_likelihood(R, A, psi)
         return A, psi, ll
-    
-    def _fa_expectation_max(self, R, A, psi, ncomps, n_iters=1000, tol=1e-9, vocal=False,
-                        constraints=None):
+
+    def _fa_expectation_max(self, R, A, psi, ncomps, n_iters=1000, tol=1e-9, 
+                            vocal=False, constraints=None):
         '''
         Rubin and Thayer's expectation maximization algorithm for factor analysis
-        
+
         Parameters:
             R: Correlation matrix
             A: Initial loadings matrix, normally principal components
@@ -144,22 +141,22 @@ class EFA:
             n_iters: Number of iterations
             tol: Tolerance before convergance
             vocal: Whether or not ot print iterations
-        
+
         Returns:
             A: Factor loading matrix
             psi: Uniqueness
             llhist: log likelihood for each iteration without the -n/2 term
         '''
         A = A[:, :ncomps]
-        I = np.eye(ncomps)
+        Ip = np.eye(ncomps)
         prev_ll = -np.inf
         ll_hist = []
         for i in range(n_iters):
             Inv_Psi = np.diag(1.0 / psi)
             F = np.dot(Inv_Psi, A)
             G = np.dot(R, F)
-            H = np.dot(G, np.linalg.inv(I + np.dot(A.T, F)))
-            A = np.dot(G, np.linalg.inv(I + np.dot(H.T, F)))
+            H = np.dot(G, np.linalg.inv(Ip + np.dot(A.T, F)))
+            A = np.dot(G, np.linalg.inv(Ip + np.dot(H.T, F)))
             if constraints is not None:
                 A = A * constraints
             psi = np.diag(R - np.dot(H, A.T))
@@ -167,130 +164,118 @@ class EFA:
             ll_hist.append(ll)
             if abs(ll - prev_ll) < tol:
                 break
-            if vocal==True:
+            if vocal:
                 print(i, abs(ll - prev_ll))
             prev_ll = ll
         return A, psi, pd.DataFrame(ll_hist)
-    
+
     def _compute_factors(self, R, A, X):
         '''
         Compute factors from a given loading matrix
-        
+
         Parameters:
             R: Correlation matrix of data X
             A: Loadings matrix
             X: Data
-        
+
         Returns:
             F: Estimated factors
         '''
         beta = np.dot(np.linalg.pinv(R), A)
         F = np.dot(X, beta)
         return F
-    
+
     def _fa_standard_errors(self, loadings, psi, R, InvSigma):
         Dp = linalg_utils.dmat(R.shape[0])
         Np = linalg_utils.nmat(R.shape[0])
         gL = Dp.T.dot(Np.dot(np.kron(loadings, np.eye(R.shape[0]))))
         gP = linalg_utils.pre_post_elim(np.eye(np.product(R.shape)))
         g = np.block([gL, gP])
-        Iexp = linalg_utils.mdot([g.T, linalg_utils.pre_post_elim(np.kron(InvSigma, 
-                                                                    InvSigma)), g])
+        W = linalg_utils.pre_post_elim(np.kron(InvSigma, InvSigma))
+        Iexp = linalg_utils.mdot([g.T, W, g])
         Vcov = np.linalg.pinv(Iexp)
         SE_params = np.sqrt(np.diag(Vcov/self.n))
         t1 = np.product(loadings.shape)
         SE_loadings = linalg_utils.nvec(SE_params[:t1], *loadings.shape)
         SE_psi = np.diag(linalg_utils.invech(SE_params[t1:]))
         return SE_loadings, SE_psi
-        
-    def fit(self, ncomps, method='EM', n_iters=1000, tol=1e-12, 
+
+    def fit(self, ncomps, method='EM', n_iters=1000, tol=1e-12,
             rotation=None, vocal=False, custom_gamma=None,
-            n_rotation_iters=500, constraints=None, k=4, 
+            n_rotation_iters=500, constraints=None, k=4,
             standard_errors=True):
         '''
         Fitting of the factor analysis model
-        
+
         Parameters:
-            
             ncomps: The number of components (latent factors) to use
-            
-            method: method of factor extraction, default is expectation max 
-            
-            rotation: whether or not to rotate 
-            
+            method: method of factor extraction, default is expectation max
+            rotation: whether or not to rotate
             vocal: whether or not to print algorithmic details
-            
             custom_gamma: to use when obliquely rotating
-            
             n_rotation_iters: the number of iterations for the GPA algorithm
-                
             '''
-        R, data, init_psi, u, V = self.R, self.data, self.init_psi, \
-                                    self.eigvals, self.eigvecs
-                                    
+        R, data = self.R, self.data
+        init_psi, u, V = self.init_psi, self.eigvals, self.eigvecs
+                        
         A = np.dot(V[:, :ncomps], np.diag(np.sqrt(u[:ncomps])))
 
         if init_psi == 'multi_corr':
             psi = linalg_utils.multi_corr(R)
-            
+
         if init_psi == 'max_corr':
             psi = np.max(abs(R - np.eye(len(R))), axis=0)
-            
+
         if init_psi == 'pca':
             psi = np.maximum(np.diag(R) - np.diag(np.dot(A, A.T)), 0.1)
-            
+
         self.ncomps = ncomps
         self.A, self.psi = A, psi
         self.constraints = constraints
-        
-        if method=='EM':
+
+        if method == 'EM':
             A, psi, ll_hist = self._fa_expectation_max(R, A, psi, ncomps,
-                                              vocal=vocal, 
-                                              n_iters=self.n_iters,
-                                              tol=tol,
-                                              constraints=self.constraints)
-        if method=='ML':
+                                                       vocal=vocal,
+                                                       n_iters=self.n_iters,
+                                                       tol=tol,
+                                                       constraints=constraints)
+        if method == 'ML':
             A, psi, ll_hist = self._fa_maximum_likelihood(R, A, psi, ncomps,
-                                                 vocal=vocal,
-                                                 n_iters=self.n_iters)
-        if method=='PAF':
+                                                          vocal=vocal,
+                                                          n_iters=self.n_iters)
+        if method == 'PAF':
             A, psi = self._fa_principal_factor(R, A, psi, ncomps, vocal=vocal,
-                                      n_iters=self.n_iters)
-            ll_hist =self. _fa_log_likelihood(R, A, psi)
-         
+                                               n_iters=self.n_iters)
+            ll_hist = self. _fa_log_likelihood(R, A, psi)
+
         self._Sigma = np.dot(A, A.T) + np.diag(psi)
         communalities = 1 - psi
         factors = self._compute_factors(R, A, data)
         if rotation is not None:
-            L, _ = linalg_utils.rotate(A, rotation, custom_gamma=custom_gamma, 
-                          n_iters=n_rotation_iters, k=k)
+            L, _ = linalg_utils.rotate(A, rotation, custom_gamma=custom_gamma,
+                                       n_iters=n_rotation_iters, k=k)
             rotated_factors = self._compute_factors(R, L, data)
-            
+
         else:
-            
             L = None
             rotated_factors = None
-    
         if (self.cols is not None):
-            
-            labels =['Factor %i'%i for i in range(self.ncomps)]
+            labels = ['Factor %i' % i for i in range(self.ncomps)]
             self.loadings = pd.DataFrame(A, index=self.cols, columns=labels)
             self.psi = pd.DataFrame(psi, index=self.cols)
             self.communalities = pd.DataFrame(communalities, index=self.cols)
             self.factors = pd.DataFrame(factors, index=self.ix, columns=labels)
             if L is not None:
-                
                 self.rotated_loadings = pd.DataFrame(L, index=self.cols,
                                                      columns=labels)
-                self.rotated_factors = pd.DataFrame(rotated_factors, 
+                self.rotated_factors = pd.DataFrame(rotated_factors,
                                                     index=self.ix)
-                
-            self.expvar = pd.DataFrame((self.loadings**2).sum(axis=0)/np.trace(R))
-            self.Rh = pd.DataFrame(np.dot(A, A.T) + np.diag(psi), index=self.cols,
+                tR = np.trace(R)
+            self.expvar = pd.DataFrame((self.loadings**2).sum(axis=0)/tR)
+            self.Rh = pd.DataFrame(np.dot(A, A.T) + np.diag(psi),
+                                   index=self.cols,
                                    columns=self.cols)
-            
         else:
-            
             self.loadings = A
             self.psi = psi
             self.communalities = communalities
@@ -300,65 +285,60 @@ class EFA:
             self.expvar = (self.loadings**2).sum(axis=0) / np.trace(R)
             self.Rh = np.dot(A, A.T) + np.diag(psi)
         self.ll_hist = ll_hist
-        
         Sigma, sigcols, sigx, spd = check_type(self.Rh)
         S, scols, sx, spd = check_type(self.R)
         InvSigma = np.linalg.inv(Sigma)
         n, p, k = self.n, self.p, self.ncomps
-       
-        
-        self.ll_full = -n/2*(np.linalg.slogdet(Sigma)[1]+np.trace(np.dot(S,np.linalg.inv(Sigma))))
+        self.ll_full = -n/2*(np.linalg.slogdet(Sigma)[1]+np.trace(np.dot(S,
+                             np.linalg.inv(Sigma))))
         self.df = p*k+p-k**2
-        
-        self.G1 = n*(np.trace(S.dot(InvSigma)) - np.log(np.det(S.dot(InvSigma))) - p)
+        self.G1 = n*(np.trace(S.dot(InvSigma))
+                     - np.log(np.det(S.dot(InvSigma))) - p)
         self.G2 = n*(0.5*np.trace((Sigma - S).dot(np.linalg.inv(S)))**2)
         self.G3 = n*(0.5*np.trace((Sigma - S).dot(np.linalg.InvSigma))**2)
-        
         self.chi2 = np.array([[self.G1, self.G2, self.G3]])
-        self.AIC =2*self.df-2*self.ll_full
-        self.BIC = np.log(n) * self.df - 2*self.ll_full
+        self.AIC = 2 * self.df-2 * self.ll_full
+        self.BIC = np.log(n) * self.df - 2 * self.ll_full
         self.chi2_pval = sp.stats.chi2.sf(self.chi2, self.df)
         self.SMSR = statfunc_utils.SRMR(Sigma, S, self.df)
         upper = SimpleTable([[self.AIC, self.BIC, self.df]],
                             headers=['AIC', 'BIC', 'df'],
                             stubs=['ll stats'],
                             data_fmts=['%8.3f'])
-        
-        lower=SimpleTable(np.concatenate([self.chi2,self.SMSR,self.RMSEA],
-                                         axis=0),
+        lower = SimpleTable(np.concatenate([self.chi2, self.SMSR, self.RMSEA],
+                                           axis=0),
                             headers=['Chi2', 'SMSR', 'RMSEA'],
                             stubs=['G1', 'G2', 'G3'],
                             data_fmts=['%8.3f'])
-        
+
         self.fit_summary = upper
         self.fit_stats = lower
         if standard_errors is True:
             args = self.loadings, np.diag(psi), self.R, InvSigma
             self.SE_loadings, self.SE_Psi = self._fa_standard_errors(*args)
-            
+
             if self.cols is not None:
-                self.SE_loadings = pd.DataFrame(self.SE_loadings, index=self.cols,
+                self.SE_loadings = pd.DataFrame(self.SE_loadings,
+                                                index=self.cols,
                                                 columns=labels)
                 self.SE_Psi = pd.DataFrame(self.SE_Psi, index=self.cols)
-            
+
             self.loading_tvals = self.loadings/self.SE_loadings
             self.psi_tvals = self.psi/self.SE_Psi
-        
 
 
-        
 class CFA:
-    
+
     def __init__(self, X):
         '''
         Confirmatory factor analysis.  Differes from EFA by containing
         a matrix of factor correlations, phi, as well as option for a priori
         constraints
-        
-        If blockwise constraints are applied to loadings and factor 
+
+        If blockwise constraints are applied to loadings and factor
         correlations, this is equivalent to the general SEM measurement
         model
-        
+
         Parameters:
             X: Matrix of data to be factor analyzed
         '''
@@ -366,15 +346,16 @@ class CFA:
         self.R = cov(X)
         self.eigvals, self.eigvecs = linalg_utils.sorted_eigh(self.R)
         self.n, self.p = X.shape
-    
-    
+
     def _cfa_ll(self, A, Psi, Phi, Cyy, ll_const):
         Sigma = linalg_utils.mdot([A, Phi, A.T]) + Psi
         InvSg = np.linalg.pinv(Sigma)
-        ll = np.log(np.linalg.det(Sigma)) + np.trace(np.dot(Cyy, InvSg)) + ll_const
+        ll = np.log(np.linalg.det(Sigma)) + np.trace(np.dot(Cyy, InvSg))
+        ll += ll_const
         return ll
-    
-    def em_cfa(self, A, Psi, Cyy, Phi=None, constraints=None, n_iters=1000, tol=1e-9,
+
+    def em_cfa(self, A, Psi, Cyy, Phi=None, constraints=None, n_iters=1000,
+               tol=1e-9,
                estimate_factor_correlations=True):
         ll_prev = np.inf
         ll_hist = []
@@ -409,37 +390,40 @@ class CFA:
             ll = self._cfa_ll(A_new, Psi_new, Phi_new, Cyy, ll_const)
             ll_hist.append(ll)
             ll_diff = ll - ll_prev
-            if ((ll_diff>0)|(abs(ll_diff)<tol)):
+            if ((ll_diff > 0) | (abs(ll_diff) < tol)):
                 break
             A, Phi, Psi, ll_prev = A_new, Phi_new, Psi_new, ll
         return A, Psi, Phi, ll_hist
-    
+
     def fa_standard_errors(self, L, Phi, Psi, S, InvSigma):
         p, p = S.shape
         Dp = linalg_utils.dmat(p)
-        gL = Dp.T.dot(linalg_utils.nmat(p).dot(np.kron(np.dot(L, Phi), np.eye(p))))
+        gL = Dp.T.dot(linalg_utils.nmat(p).dot(np.kron(np.dot(L, Phi),
+                                               np.eye(p))))
         gF = linalg_utils.pre_post_elim(np.kron(L, L))
         gP = linalg_utils.pre_post_elim(np.eye(np.product(S.shape)))
         g = np.block([gL, gF, gP])
-        ncov = linalg_utils.mdot([g.T, linalg_utils.pre_post_elim(np.kron(InvSigma,
-                                                                    InvSigma)), g])
+        W = linalg_utils.pre_post_elim(np.kron(InvSigma, InvSigma))
+        ncov = linalg_utils.mdot([g.T, W, g])
         vcov = (np.linalg.pinv(ncov) / self.n)
         SE_params = np.sqrt(np.diag(vcov)/self.n)
         SE_loadings = linalg_utils.invec(SE_params[:gL.shape[1]], *L.shape)
-        SE_phi = linalg_utils.invech(SE_params[gL.shape[1]:gL.shape[1]+gF.shape[1]])
-        SE_psi = linalg_utils.diag2(linalg_utils.invech(SE_params[gL.shape[1]+gF.shape[1]:]))
+        SE_phi = linalg_utils.invech(SE_params[gL.shape[1]:gL.shape[1]
+                                               + gF.shape[1]])
+        SE_psi = linalg_utils.diag2(linalg_utils.invech(SE_params[gL.shape[1]
+                                    + gF.shape[1]:]))
         return SE_loadings, SE_phi, SE_psi
-    
-    def fit(self, ncomps, loadings_init=None, factor_correlations=None, 
+
+    def fit(self, ncomps, loadings_init=None, factor_correlations=None,
             estimate_factor_correlations=True, constraints=None,
             n_iters=1000, tol=1e-12, SEs=False):
         if loadings_init is None:
-            self.A_init = np.dot(self.eigvecs[:, :ncomps], 
-                          np.diag(np.sqrt(self.eigvals[:ncomps])))
+            self.A_init = np.dot(self.eigvecs[:, :ncomps],
+                                 np.diag(np.sqrt(self.eigvals[:ncomps])))
         else:
             self.A_init = loadings_init
         self.Psi_init = self.R - np.dot(self.A_init, self.A_init.T)
-        
+
         self.loadings, self.uniqueness, self.factor_correlations, \
         self.ll_hist = self.em_cfa(A=self.A_init, Psi=self.Psi_init,
                               Cyy=self.R, Phi=factor_correlations,
@@ -616,14 +600,14 @@ class FactorAnalysis:
 
         return J, linalg_utils.pre_post_elim(Q0 + Q1)
     
-    def fit(self, verbose=2, n_iters=2000, gtol=1e-8, xtol=1e-9):
+    def fit(self, optimizer_kwargs=None):
+        if optimizer_kwargs is None:
+            optimizer_kwargs = {'method':'trust-constr',
+                                'options':{'verbose':0}}
         #Hessian based optimization is less efficient
         optimizer = minimize(self.loglike, self.free, jac=self.gradient,
                      bounds=self.bounds, 
-                     method='trust-constr', options={'verbose':verbose, 
-                                                     'maxiter':n_iters,
-                                                     'gtol':gtol, 
-                                                     'xtol':xtol})
+                     **optimizer_kwargs)
         self.free = optimizer.x
         self.params[self.idx] = self.free
         self.Lambda, self.Phi, self.Psi = self.p2m(self.params)
@@ -654,5 +638,15 @@ class FactorAnalysis:
         self.RMSEA = np.sqrt(np.maximum(self.chi2-self.df, 0)/(self.df*(self.n-1)))
         self.SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
         self.chi2, self.chi2p = statfunc_utils.lr_test(self.Sigma, self.S, self.df)
+        self.sumstats = pd.DataFrame([[self.AGFI, '-'],
+                                      [self.GFI, '-'],
+                                      [self.RMSEA, '-'],
+                                      [self.SRMR, '-'],
+                                      [self.chi2, self.chi2p],
+                                      [self.stdchi2, '-']
+                                      ])
+        self.sumstats.index = ['AGFI', 'GFI', 'RMSEA', 'SRMR',
+                               'chi2', 'chi2_standard']
+        self.sumstats.columns=['Goodness_of_fit', 'P value']
 
-
+    
