@@ -45,10 +45,11 @@ class LM:
         #    dnames = di.term_names[1:]
         # else:
         #    dnames = di.term_names
-        Xmats = [X.loc[:, di.subset(x).column_names]
-                 for x in di.term_names[1:]]
+        Xmats = [X.iloc[:, di.term_name_slices[x]]
+                 for x in di.term_names if x!='Intercept']
         # Xmats = [X.iloc[:, di.slice(x)] for x in dnames]
-        Xmats = collections.OrderedDict(zip(di.term_names[1:], Xmats))
+        tnames = [x for x in di.term_names if x!='Intercept']
+        Xmats = collections.OrderedDict(zip(tnames, Xmats))
 
         anv = collections.OrderedDict()
         for key in Xmats.keys():
