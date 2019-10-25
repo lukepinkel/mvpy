@@ -755,8 +755,8 @@ def multi_rand(R, size=1000):
     n = R.shape[0]
     X = csd(whiten(csd(np.random.normal(size=(size, n)))))
     
-    L = cholesky(R)
-    Y = dot(L, X.T).T
+    W = chol(R)
+    Y = X.dot(W.T)
     if is_pd:
         Y = pd.DataFrame(Y, columns=col)
     return Y
