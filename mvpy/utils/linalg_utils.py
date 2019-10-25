@@ -14,7 +14,7 @@ from numpy.linalg import (multi_dot, eig, eigh, svd, inv, pinv, cholesky, det,
 from scipy.linalg import qr
 import scipy.sparse as sps
 import scipy.sparse.linalg as spl
-from ..utils.base_utils import check_type, cov
+from ..utils.base_utils import check_type, cov, csd
 
 def _check_1d(x):
     if x.ndim>1:
@@ -753,7 +753,7 @@ def multi_rand(R, size=1000):
     R, col, ix, is_pd = check_type(R)
     
     n = R.shape[0]
-    X = whiten(np.random.rand(size, n))
+    X = csd(whiten(csd(np.random.normal(size=(size, n)))))
     
     L = cholesky(R)
     Y = dot(L, X.T).T
