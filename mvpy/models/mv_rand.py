@@ -26,10 +26,11 @@ def multi_rand(R, size=1000):
     R, col, ix, is_pd = base_utils.check_type(R)
     
     n = R.shape[0]
-    X = linalg_utils.whiten(np.random.rand(size, n))
+    X = base_utils.csd(np.random.normal(size=(size, n)))
+    X = base_utils.csd(linalg_utils.whiten(X))
     
-    L = linalg_utils.chol(R)
-    Y = np.dot(L, X.T).T
+    W = linalg_utils.chol(R)
+    Y = X.dot(W.T)
     if is_pd:
         Y = pd.DataFrame(Y, columns=col)
     return Y
