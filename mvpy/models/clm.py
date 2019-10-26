@@ -246,4 +246,19 @@ class CLM:
         self.LLR = self.LL0 - self.LLA
         self.LLRp = sp.stats.chi2.sf(self.LLR, 
                                   len(self.params) - len(self.intercept_model.params))
+        n, p = self.X.shape
+        rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
+        r2_coxsnell = 1 - np.exp(2.0/n*(self.LLA-self.LL0))
+        r2_mcfadden = 1 - self.LLA/self.LL0
+        r2_mcfadden_adj = 1 - (self.LLA-p)/self.LL0
+        r2_nagelkerke = r2_coxsnell / rmax
+        ss = [[self.LLR, self.LLRp],
+              [r2_coxsnell, '-'],
+              [r2_mcfadden, '_'],
+              [r2_mcfadden_adj, '-'],
+              [r2_nagelkerke, '-']]
+        ss = pd.DataFrame(ss, index=['LLR', 'r2_coxsnell', 'r2_mcfadden',
+                                     'r2_mfadden_adj', 'r2_nagelkerke'])
+        ss.columns = ['Test Stat', 'P-value']
+        self.sumstats = ss
         
