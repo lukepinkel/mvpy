@@ -100,8 +100,7 @@ class MinimalNB2:
         self.vcov = linalg_utils.einv(self.hessian(self.params))
         self.vcov[-1, -1]=np.abs(self.vcov[-1, -1])
         self.params_se = np.sqrt(np.diag(self.vcov))
-        self.res = pd.DataFrame(np.vstack([self.params, self.params_se]),
-                                columns=self.xcols.tolist()+['variance']).T
+
     def predict(self, X=None, params=None, b=None):
         if X is None:
             X = self.X
@@ -178,6 +177,14 @@ class NegativeBinomial:
         Ha = np.array([self.var_deriv(a, mu, y)]) 
         H = np.block([[Hb, Hab[:, None]], [Hab[:, None].T, Ha]])
         return -H
+    
+    def deviance(self, params):
+        X, y = self.X, linalg_utils._check_1d(self.Y)
+        b, a = params[:-1], params[-1]
+        mu = np.exp(X.dot(b))
+        d1 = y * np.log(y / mu)
+        d2 = (y + 1.0/a) * np.log((1 + a*y) / (1 + a * mu))
+        
     
     def fit(self, optimizer_kwargs=None):
         if optimizer_kwargs is None:
