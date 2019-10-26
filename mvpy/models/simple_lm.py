@@ -47,6 +47,7 @@ class LM:
         #    dnames = di.term_names
         Xmats = [X.iloc[:, di.term_name_slices[x]]
                  for x in di.term_names if x!='Intercept']
+        Xmats = [pd.concat([X['Intercept'], Xm_i], axis=1) for Xm_i in Xmats]
         # Xmats = [X.iloc[:, di.slice(x)] for x in dnames]
         tnames = [x for x in di.term_names if x!='Intercept']
         Xmats = collections.OrderedDict(zip(tnames, Xmats))
@@ -64,8 +65,8 @@ class LM:
     def minimum_ols(self, X, y):
         n, p = X.shape
         dfe = n - p - 1.0
-        dft = n - 1.0
-        dfr = p
+        dft = n
+        dfr = p - 1.0
 
         sst = np.var(y, axis=0)*y.shape[0]
 
