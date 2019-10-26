@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 import scipy as sp
 import scipy.special
+import scipy.stats
 import scipy.optimize
 from ..utils import linalg_utils, base_utils
 
@@ -182,8 +183,21 @@ class NegativeBinomial:
         X, y = self.X, linalg_utils._check_1d(self.Y)
         b, a = params[:-1], params[-1]
         mu = np.exp(X.dot(b))
-        d1 = y * np.log(y / mu)
-        d2 = (y + 1.0/a) * np.log((1 + a*y) / (1 + a * mu))
+        v = 1.0 / a
+        ix = y>0
+        dev1 = y[ix] * np.log(y[ix] / mu[ix])
+        dev1 -= (y[ix]+v) * np.log((y[ix] + v) / (mu[ix] + v))
+        
+        dev2 = np.log(1 + a * mu[~ix]) / a
+        dev = 2.0 * (np.sum(dev1) + np.sum(dev2))
+        return dev
+    
+    def var_mu(self, params):
+        X = self.X
+        b, a = params[:-1], params[-1]
+        mu = np.exp(X.dot(b))
+        v = mu + a * mu**2
+        return v
         
     
     def fit(self, optimizer_kwargs=None):
@@ -205,7 +219,25 @@ class NegativeBinomial:
         self.params_se = np.sqrt(np.diag(self.vcov))
         self.res = pd.DataFrame(np.vstack([self.params, self.params_se]),
                                 columns=self.xcols.tolist()+['variance']).T
-                                
+        self.LLR = -(self.LLA - self.LL0)
+        self.BIC = -(np.log(self.n_obs) * len(self.params) - 2 * self.LLA)
+        self.AIC = -(2 * len(self.params) - 2 * self.LLA)
+        self.dev = self.deviance(self.params)
+        self.yhat = self.predict(params=self.params)
+        chi2 = (linalg_utils._check_1d(self.Y) - self.yhat)**2
+        chi2/= self.var_mu(self.params)
+        self.chi2 = np.sum(chi2)
+        self.scchi2 = self.chi2 / (self.n_obs - self.n_feats)
+        self.chi2_p = sp.stats.chi2.sf(self.chi2,  (self.n_obs - self.n_feats))
+        self.dev_p = sp.stats.chi2.sf(self.dev,  (self.n_obs - self.n_feats))
+        self.LLRp = sp.stats.chi2.sf(self.LLR,  (self.n_obs - self.n_feats))
+        ss = [[self.AIC, self.BIC, self.chi2, self.dev, self.LLR, self.scchi2],
+              ['-', '-', self.chi2_p, self.dev_p, self.LLRp, '-']]
+        ss = pd.DataFrame(ss, columns=['AIC', 'BIC', 'chi2', 'deviance',
+                                       'LLR', 'scaled_chi2']).T
+        ss.columns = ['Test_stat', 'P-value']
+        self.sumstats = ss
+                     
     def predict(self, X=None, params=None, b=None):
         if X is None:
             X = self.X
