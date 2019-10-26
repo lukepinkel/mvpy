@@ -14,14 +14,10 @@ import scipy.special
 import scipy.stats
 import scipy.optimize
 from ..utils import linalg_utils, base_utils
-
-    
   
 def trigamma(x):
     return sp.special.polygamma(1, x)      
     
-
-
 class MinimalNB2:
     
     def __init__(self, X, Y):
@@ -211,7 +207,7 @@ class NegativeBinomial:
         optimizer = sp.optimize.minimize(self.loglike, params, jac=self.gradient, 
                              hess=self.hessian, **optimizer_kwargs)
         
-        self.optimize = optimizer
+        self.optimizer = optimizer
         self.params = optimizer.x
         self.LLA = self.loglike(self.params)
         self.vcov = linalg_utils.einv(self.hessian(self.params))
@@ -231,10 +227,25 @@ class NegativeBinomial:
         self.chi2_p = sp.stats.chi2.sf(self.chi2,  (self.n_obs - self.n_feats))
         self.dev_p = sp.stats.chi2.sf(self.dev,  (self.n_obs - self.n_feats))
         self.LLRp = sp.stats.chi2.sf(self.LLR,  (self.n_obs - self.n_feats))
-        ss = [[self.AIC, self.BIC, self.chi2, self.dev, self.LLR, self.scchi2],
-              ['-', '-', self.chi2_p, self.dev_p, self.LLRp, '-']]
-        ss = pd.DataFrame(ss, columns=['AIC', 'BIC', 'chi2', 'deviance',
-                                       'LLR', 'scaled_chi2']).T
+        n, p = self.X.shape
+        yhat = self.predict(params=self.params)
+        self.ssr =np.sum((yhat - yhat.mean())**2)
+        rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
+        rcs = 1 - np.exp(2.0/n*(self.LLA-self.LL0))
+        rna = rcs / rmax
+        rmf = 1 - self.LLA/self.LL0
+        rma = 1 - (self.LLA-p)/self.LL0
+        rmc = self.ssr/(self.ssr+3.29*n)
+        rad = self.LLR/(self.LLR+n)
+        
+        ss = [[self.AIC, self.BIC, self.chi2, self.dev, self.LLR, self.scchi2,
+               rcs, rna, rmf, rma, rmc, rad],
+              ['-', '-', self.chi2_p, self.dev_p, self.LLRp, '-', '-', '-',
+               '-', '-', '-', '-']]
+        ss = pd.DataFrame(ss).T
+        ss.index = ['AIC', 'BIC', 'chi2', 'deviance', 'LLR', 'scaled_chi2', 
+                    'R2_Cox_Snell', 'R2_Nagelkerke', 'R2_McFadden',
+                    'R2_McFaddenAdj', 'R2_McKelvey', 'R2_Aldrich']
         ss.columns = ['Test_stat', 'P-value']
         self.sumstats = ss
                      
