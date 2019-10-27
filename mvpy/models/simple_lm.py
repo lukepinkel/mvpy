@@ -6,7 +6,7 @@ Created on Wed Sep 11 23:25:20 2019
 @author: lukepinkel
 """
 import patsy
-import collections
+
 import numpy as np
 import pandas as pd
 import scipy as sp
@@ -19,8 +19,8 @@ class LM:
 
     def __init__(self, formula, data):
         y, X = patsy.dmatrices(formula, data=data, return_type='dataframe')
-        self.X, self.y = X, y
-        self.sumstats = self.lmss(X, y)
+        self.X, self.y, self.data = X, y, data
+        self.sumstats = self.lmss()
         self.gram = np.linalg.pinv(X.T.dot(X))
         yp = linalg_utils._check_np(y)
         self.coefs = linalg_utils._check_np(self.gram.dot(X.T)).dot(yp)
@@ -39,28 +39,52 @@ class LM:
         self.res['p'] = sp.stats.t.sf(abs(self.res['t']),
                                       X.shape[0]-X.shape[1])*2.0
 
-    def lmss(self, X, y):
+    def lmss(self):
+        X, Y, data = self.X, self.y, self.data
+        
         di = X.design_info
-        # if 'Intercept' in X.columns.tolist():
-        #    dnames = di.term_names[1:]
-        # else:
-        #    dnames = di.term_names
-        Xmats = [X.iloc[:, di.term_name_slices[x]]
-                 for x in di.term_names if x!='Intercept']
-        Xmats = [pd.concat([X['Intercept'], Xm_i], axis=1) for Xm_i in Xmats]
-        # Xmats = [X.iloc[:, di.slice(x)] for x in dnames]
-        tnames = [x for x in di.term_names if x!='Intercept']
-        Xmats = collections.OrderedDict(zip(tnames, Xmats))
-
-        anv = collections.OrderedDict()
-        for key in Xmats.keys():
-            anv[key] = np.concatenate(self.minimum_ols(Xmats[key], y))
-        anv['Total'] = np.concatenate(self.minimum_ols(self.X, self.y))
-        anova_table = pd.DataFrame(anv, index=['sst', 'ssr', 'sse', 'mst',
-                                               'msr', 'mse', 'r2', 'r2_adj']).T
-
-        anova_table['F'] = anova_table.eval('msr/mse')
-        return anova_table
+        di = X.design_info
+        term_names = di.term_names
+        column_names = di.subset(term_names).column_names
+        X = X[column_names]
+        G = pd.DataFrame(np.linalg.inv(X.T.dot(X)), 
+                         index=X.columns, columns=X.columns)
+        B = G.dot(X.T).dot(Y)
+        
+        SSE = np.sum((Y - X.dot(B))**2)
+        SST = np.sum((Y - Y.mean())**2)
+        SSH = B.T.dot(X.T).dot(Y-Y.mean())
+        SSI = B.T.dot(X.T).dot(Y) - SSH
+        
+        sumsq = {}
+        meansq = {}
+        dfs = {}
+        for term in term_names:
+            if term!='Intercept':
+                Xk = patsy.dmatrix('~'+term, data=data, return_type='dataframe')
+                SSHk = np.linalg.lstsq(Xk, Y)[0].T.dot(Xk.T).dot(Y) - SSI
+                dfk = Xk.shape[1] - 1
+                if term.find(':')!=-1:
+                    for x in term_names:
+                        if (x!=term)&(x in term):
+                            SSHk -= sumsq[x]
+                            dfk -= dfs[x]
+                sumsq[term] = linalg_utils._check_0d(linalg_utils._check_np(SSHk))
+                dfs[term] = linalg_utils._check_0d(linalg_utils._check_np(dfk))
+                meansq[term] = linalg_utils._check_0d(linalg_utils._check_np(SSHk/dfk))
+                
+        anova = pd.DataFrame([sumsq, dfs, meansq], index=['SSQ', 'df', 'MSQ']).T
+        rss = linalg_utils._check_0d(linalg_utils._check_np(SSE))
+        dfr = X.shape[0] - linalg_utils._check_0d(linalg_utils._check_np(anova['df'].sum()))
+        anova['F'] = anova['MSQ'] / (rss/dfr)
+        anova['P'] = sp.stats.f.sf(anova['F'], anova['df'], dfr-1)
+        
+        
+        anr = pd.DataFrame([[rss, dfr, rss/dfr, '-', '-']],  columns=anova.columns,
+                           index=['Residual'])
+        anova = pd.concat([anova, anr])
+        anova['r2'] = anova['SSQ'] / linalg_utils._check_0d(linalg_utils._check_np(SST))
+        return anova
 
     def minimum_ols(self, X, y):
         n, p = X.shape
