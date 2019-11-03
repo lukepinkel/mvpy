@@ -261,4 +261,12 @@ class CLM:
                                      'r2_mfadden_adj', 'r2_nagelkerke'])
         ss.columns = ['Test Stat', 'P-value']
         self.sumstats = ss
+    
+    def predict(self):
+        beta = self.params[-self.X.shape[1]:]
+        yhat = self.X.dot(beta)
+        th = np.concatenate([np.array([-1e6]), self.params[:-self.X.shape[1]],
+                             np.array([1e6])])
+        yhat = pd.qcut(yhat, th).codes.astype(float)
+        return yhat
         

@@ -16,6 +16,7 @@ import pandas as pd
 
 from ..utils import linalg_utils, statfunc_utils, base_utils, data_utils  #analysis:ignore
 '''
+from mvpy.utils import linalg_utils, statfunc_utils, base_utils, data_utils  #analysis:ignore
 
 X_anova = np.zeros((1000, 3))
 X_anova[:, 0] = np.random.normal(size=(1000))
@@ -108,6 +109,12 @@ class GeneralLinearModel(object):
     def loglike(self, params):
         raise NotImplementedError
     
+    def gradient(self, params):
+        raise NotImplementedError
+    
+    def hessian(self, params):
+        raise NotImplementedError
+    
     def from_params(self, params):
         raise NotImplementedError
     
@@ -154,7 +161,7 @@ class OLS(GeneralLinearModel):
         return theta
     
     def from_params(self, theta):
-        beta, s = theta[:self.p], theta[self.p:]
+        beta, s = theta[:self.p*self.q], theta[self.p*self.q:]
         Sigma = linalg_utils.invech(s)
         beta = linalg_utils.invec(beta, self.p, self.q)
         return beta, Sigma
@@ -166,6 +173,23 @@ class OLS(GeneralLinearModel):
                                     colcov=Sigma).logpdf(self.Y).sum()
         return -ll
     
+    def gradient(self, theta):
+        beta, Sigma = self.from_params(theta)
+        X, Y = self.X, self.Y
+        g = linalg_utils.vec(np.dot(X.T, Y-X.dot(beta)))
+        return g
+    
+    def hessian(self, theta):
+        beta, Sigma = self.from_params(theta)
+        X, Y = self.X, self.Y
+        E = Y-X.dot(beta)
+        Sinv = np.linalg.pinv(Sigma)
+        Hbb = np.kron(Sinv, X.T.dot(X))
+        Hbs = np.kron(Sinv, np.linalg.multi_dot([X.T, E, Sinv]))
+        Hss = np.kron(Sinv, Sinv)/2.0
+        H = np.block([[Hbb, Hbs], [Hbs.T, Hss]])
+        return H
+        
     def _fit_closed(self):
         X, Y = self.X, self.Y
         Sxx = np.dot(X.T, X)
@@ -221,25 +245,28 @@ class OLS(GeneralLinearModel):
         if a2*b2 <= 4:
             g = 1
         else:
-            g = (a2*b2-4) / (a2 + b2 - 5)
+            g = np.sqrt((a2*b2-4) / (a2 + b2 - 5))
         
         rho2, _ = np.linalg.eig(Sh.dot(np.linalg.inv(Sh+Se/dfe)))
         s = np.min([a, b])
         tst_hlt = np.sum(rho2/(1-rho2))
         tst_pbt = np.sum(rho2)
         tst_wlk = np.product(1-rho2)
+        tst_rlr = np.max(rho2/(1-rho2))
         
         eta_hlt = (tst_hlt/s) / (1 + tst_hlt/s)
         eta_pbt = tst_pbt / s
         eta_wlk = 1 - np.power(tst_wlk, (1/g))
+        eta_rlr = np.max(rho2)
         
-        test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk]).T
+        test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk,]).T
         effect_sizes = np.vstack([eta_hlt, eta_pbt, eta_wlk]).T
         test_stats = pd.DataFrame(test_stats, columns=['HLT', 'PBT', 'WLK'])
         effect_sizes = pd.DataFrame(effect_sizes, columns=['HLT', 'PBT', 'WLK'])
         
         df_hlt1 = a * b
         df_wlk1 = a * b
+        df_rlr1 = np.max([a, b])
 
         df_pbt1 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
         df_pbt1 /= (dfe * (dfe + a - b))
@@ -256,6 +283,7 @@ class OLS(GeneralLinearModel):
         df_pbt2 *= (dfe + s - b) / (dfe + a)
 
         df_wlk2 = g * (dfe - (b - a + 1) / 2) - (a * b - 2) / 2
+        df_rlr2 = dfe - np.max([a, b]) + b
         df1 = np.array([df_hlt1, df_pbt1, df_wlk1])
         df2 = np.array([df_hlt2, df_pbt2, df_wlk2])
         f_values = (effect_sizes / df1) / ((1 - effect_sizes) / df2)
@@ -263,11 +291,17 @@ class OLS(GeneralLinearModel):
         p_values = pd.DataFrame(p_values, columns=effect_sizes.columns)
         df1 = pd.DataFrame(df1, index=effect_sizes.columns).T
         df2 = pd.DataFrame(df2, index=effect_sizes.columns).T
-        
+        f_rlr = tst_rlr * (df_rlr2 / df_rlr1)
+        p_rlr = sp.stats.f.sf(f_rlr, df_rlr1, df_rlr2)
+        rlr = pd.DataFrame([tst_rlr, eta_rlr, f_rlr, df_rlr1, df_rlr2, p_rlr])
+        rlr.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
+        rlr.columns = ['RLR']
+        rlr = rlr.T
         sumstats = pd.concat([test_stats, effect_sizes, f_values, df1, df2, 
                               p_values])
         sumstats.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
         sumstats = sumstats.T
+        sumstats = pd.concat([sumstats, rlr])
         return sumstats, effect_sizes, rho2
     
     def parameter_inference(self):
@@ -292,9 +326,8 @@ class OLS(GeneralLinearModel):
         self.res.index = xlabels + ylabels
         self.res.columns = ['param', 'SE', 't_value']
         self.res['p_value'] = sp.stats.t.sf(abs(self.res['t_value']), 
-                self.n-self.p)*2.0
+                                            self.n-self.p)*2.0
                 
-
     
 '''       
 ols_model = OLS("y~"+"+".join(['x%i'%i for i in range(1, 21)]), df)
