@@ -323,7 +323,17 @@ class LMM:
                                        X.shape[0]-len(self.params)) * 2.0
         res.index = self.res_names
         self.res = res
-
+        n_obs, k_params = self.X.shape[0], len(self.params)
+        
+        self.ll = self.loglike(self.params)
+        self.aic = self.ll + (2 * k_params)
+        self.aicc = self.ll + 2*k_params*n_obs / (n_obs - k_params - 1)
+        self.bic = self.ll + k_params*np.log(n_obs)
+        self.caic = self.ll + k_params * np.log(n_obs+1)
+        self.r2_fe = 1 - np.var(self.y - self.X.dot(self.b)) / np.var(self.y)
+        self.r2_re = 1 - np.var(self.y - self.Z.dot(self.u)) / np.var(self.y)
+        self.r2 = 1 - np.var(self.y - self.predict()) / np.var(self.y)
+        
     def predict(self, X=None, Z=None):
         if X is None:
             X = self.X

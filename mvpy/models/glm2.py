@@ -295,11 +295,6 @@ class Bernoulli:
         d = y*lna+(1-y)*lnb
         return 2*d
         
-        
-        
-        
-        
-    
 
 class Poisson:
     
@@ -463,7 +458,6 @@ class Normal:
         return 2*d
 
 
-
 class IdentityLink:
 
     def __init__(self):
@@ -480,6 +474,7 @@ class IdentityLink:
     def d2inv_link(self, eta):
         d2mu = 0.0*eta
         return d2mu
+    
     
 class LogitLink:
 
@@ -500,6 +495,16 @@ class LogitLink:
         u = np.exp(eta)
         d2mu = -(u * (u - 1.0)) / ((1.0 + u)**3)
         return d2mu
+    
+    def link(self, mu):
+        eta = np.log(mu / (1 - mu))
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1 / (mu * (1 - mu))
+        return dmu
+        
+        
 
 class ProbitLink:
     
@@ -518,6 +523,16 @@ class ProbitLink:
     def d2inv_link(self, eta):
         d2mu = -eta * sp.stats.norm.pdf(eta, loc=0, scale=1)
         return d2mu
+    
+    def link(self, mu):
+        eta = sp.stats.norm.ppf(mu, loc=0, scale=1)
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (self.dinv_link(self.link(mu)))
+        return dmu
+        
+        
 
 class LogLink:
     def __init__(self):
@@ -535,6 +550,15 @@ class LogLink:
         d2mu = np.exp(eta)
         return d2mu
     
+    def link(self, mu):
+        eta = np.log(mu)
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (self.dinv_link(self.link(mu)))
+        return dmu
+    
+    
 class ReciprocalLink:
     
     
@@ -548,9 +572,19 @@ class ReciprocalLink:
     def dinv_link(self, eta):
         dmu = -1 / (eta**2)
         return dmu
+    
     def d2inv_link(self, eta):
         d2mu = 2 / (eta**3)
         return d2mu
+    
+    def link(self, mu):
+        eta  = 1 / mu
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (self.dinv_link(self.link(mu)))
+        return dmu
+
 
 class CloglogLink:
     
@@ -567,6 +601,16 @@ class CloglogLink:
     def d2inv_link(self, eta):
         d2mu = -np.exp(eta - np.exp(eta)) * (np.exp(eta) - 1.0)
         return d2mu
+    
+    def link(self, mu):
+        eta = np.log(np.log(1 / (1 - mu)))
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (self.dinv_link(self.link(mu)))
+        return dmu
+    
+    
 
 class PowerLink:
     
@@ -596,6 +640,18 @@ class PowerLink:
         else:
             d2mu = (eta**(1/alpha) * lnx * (lnx+2*alpha)) / alpha**4
         return d2mu
+    
+    def link(self, mu):
+        if self.alpha==0:
+            eta = np.log(mu)
+        else:
+            eta = mu**(self.alpha)
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (self.dinv_link(self.link(mu)))
+        return dmu
+    
     
     
 

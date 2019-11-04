@@ -267,6 +267,6 @@ class CLM:
         yhat = self.X.dot(beta)
         th = np.concatenate([np.array([-1e6]), self.params[:-self.X.shape[1]],
                              np.array([1e6])])
-        yhat = pd.qcut(yhat, th).codes.astype(float)
+        yhat = pd.cut(yhat, th).codes.astype(float)
         return yhat
         
