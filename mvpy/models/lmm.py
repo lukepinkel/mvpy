@@ -16,7 +16,7 @@ import scipy.sparse as sps
 from ..utils import linalg_utils, data_utils
 
 
-class LMM:
+class LMM(object):
 
     def __init__(self, fixed_effects, random_effects, yvar, data,
                  error_structure=None, acov=None):
@@ -341,6 +341,13 @@ class LMM:
         self.r2_fe = 1 - np.var(self.y - self.X.dot(self.b)) / np.var(self.y)
         self.r2_re = 1 - np.var(self.y - self.Z.dot(self.u)) / np.var(self.y)
         self.r2 = 1 - np.var(self.y - self.predict()) / np.var(self.y)
+        self.sumstats = np.array([self.aic, self.aicc, self.bic, self.caic,
+                                  self.r2_fe, self.r2_re, self.r2])
+        self.sumstats = pd.DataFrame(self.sumstats, index=['AIC', 'AICC', 'BIC',
+                                                           'CAIC', 
+                                                           'FixedEffectsR2',
+                                                           'RandomEffectsR2', 
+                                                           'R2'])
         
     def predict(self, X=None, Z=None):
         if X is None:
@@ -413,3 +420,6 @@ class LMM:
                     H.append(Hij[0])
         H = linalg_utils.invech(np.array(H))
         return H
+    
+
+   
