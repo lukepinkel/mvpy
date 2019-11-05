@@ -63,7 +63,7 @@ class MinimalGLM:
         W1 = self.f.d2inv_link(eta)
         W2 = self.f.d2canonical(mu)
         
-        Psc = (linalg_utils._check_1d(Y)-mu) * (W2*W0+W1*Vinv)
+        Psc = (linalg_utils._check_1d(Y)-mu) * (W2 * W0 + W1 * Vinv)
         Psb = Vinv*W0
         W = Psc - Psb
         
@@ -343,10 +343,10 @@ class Poisson:
     def deviance(self, params, X, Y):
         y = linalg_utils._check_1d(Y)
         mu = self.inv_link(X.dot(params))
-        lna = np.zeros(y.shape[0])
+        d = np.zeros(y.shape[0])
         ixa = (y/mu)>0
-        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
-        d = y*lna+(y-mu)
+        d[ixa] = y*np.log(y[ixa]/mu[ixa]) 
+        d[~ixa]= (y[~ixa]-mu[~ixa])
         return 2*d
     
 

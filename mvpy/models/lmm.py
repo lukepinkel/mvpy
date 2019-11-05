@@ -62,34 +62,40 @@ class LMM:
         fixed_effects = X.columns
         Z = []
         re_struct = collections.OrderedDict()
-        if type(yvar) is list:
+        
+        #Determine if model is multivariate
+        if type(yvar) is list: 
             n_vars = len(yvar)
             yvnames = yvar
         else:
             n_vars = 1
             yvnames = [yvar]
-        res_names = []
+         
+        res_names = [] #might be better of renamed re_names; may be typo
         for key in random_effects.keys():
+            #dummy encode the groupings and get random effect variate
             Ji = data_utils.dummy_encode(data[key], complete=True)
             Zij = patsy.dmatrix(random_effects[key], data=data,
                                 return_type='dataframe')
-            Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T
+            #stratify re variable by dummy columns
+            Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T 
             Z.append(Zi)
             k = Zij.shape[1]*n_vars
+            # RE dependence structure
             if (acov is not None):
-                if acov[key] is not None:
+                if acov[key] is not None: #dependence structure for each RE
                     acov_i = acov[key]
-                else:
+                else:                     #single dependence for all REs
                     acov_i = np.eye(Ji.shape[1])
-            else:
+            else:                         #IID
                 acov_i = np.eye(Ji.shape[1])
             re_struct[key] = {'n_units': Ji.shape[1],
-                          'n_level_effects': Zij.shape[1],
-                          'cov_re_dims': k,
-                          'n_params': ((k + 1.0) * k) / 2.0,
-                          'vcov': np.eye(k),
-                          'params': linalg_utils.vech(np.eye(k)),
-                          'acov': acov_i}
+                              'n_level_effects': Zij.shape[1],
+                              'cov_re_dims': k,
+                              'n_params': ((k + 1.0) * k) / 2.0,
+                              'vcov': np.eye(k),
+                              'params': linalg_utils.vech(np.eye(k)),
+                              'acov': acov_i}
             if len(yvnames)>1:
                 names = [x+": "+y for x in yvnames for y in
                          Zij.columns.tolist()]
@@ -120,7 +126,9 @@ class LMM:
             
         if type(yvar) is str:
             y = data[[yvar]]
-
+        
+        #Vectorize equations - Add flexibility for dependent variable specific
+        #design matrices
         elif type(yvar) is list:
             y = linalg_utils.vecc(data[yvar].values)
             Z = np.kron(np.eye(n_vars), Z)
@@ -143,7 +151,7 @@ class LMM:
                                re_struct[key]['acov']]
         var_struct['error'] = [error_struct['vcov'].shape,
                                error_struct['acov']]
-
+        #Get Z and Z otimes Z for each RE
         Zs = collections.OrderedDict()
         ZoZ = collections.OrderedDict()
         for i in range(len(re_struct)):
