@@ -422,7 +422,7 @@ class LMM(object):
         return H
     
 
-class GLMM(object):
+class WLMM(object):
 
     def __init__(self, fixed_effects, random_effects, yvar, data, W, 
                  error_structure=None, acov=None):
@@ -831,7 +831,7 @@ class GLMM(object):
         H = linalg_utils.invech(np.array(H))
         return H
     
-class GLMM_PQL(GLMM):
+class GLMM(WLMM):
     def __init__(self, fixed_effects, random_effects, yvar, data, fam,
                  error_structure=None, acov=None):
         
@@ -856,11 +856,11 @@ class GLMM_PQL(GLMM):
             v = mu * (1 - mu)
             gp = self.f.link.dlink(mu)
             nu = eta + gp*(y - mu)
-            W = 1 / (v[:, 0] * (self.f.link.dlink(mu)**2)[:, 0])
+            W = 1 / (v * (self.f.link.dlink(mu)**2)[:, 0])
             W = np.diag(1/np.sqrt(W))
             
             
-            mod = GLMM(self.fe, self.re, self.yvar, self.data, W=W)
+            mod = WLMM(self.fe, self.re, self.yvar, self.data, W=W)
             mod.y = nu
             mod.fit()
             tvar = (np.linalg.norm(theta)+np.linalg.norm(mod.params))
