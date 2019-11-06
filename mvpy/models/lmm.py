@@ -839,15 +839,16 @@ class GLMM_PQL(GLMM):
         self.fe, self.re, self.yvar = fixed_effects, random_effects, yvar
         self.error_struct, self.acov = error_structure, acov
         self.data = data
-        self.mod = lmm.LMM(fixed_effects, random_effects, yvar, data, 
+        self.mod = LMM(fixed_effects, random_effects, yvar, data, 
                             error_structure, acov)
         self.mod.fit()
-        self.y = mod.y
+        self.y = self.mod.y
         
     def fit(self, n_iters=200, tol=1e-3):
         
         mod = self.mod
         theta = mod.params
+        y = self.y
         for i in range(n_iters):
             eta = mod.predict()
             
