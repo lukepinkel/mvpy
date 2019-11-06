@@ -59,7 +59,7 @@ sns.jointplot(lmm_mod.y, lmm_mod.X.dot(lmm_mod.b) + lmm_mod.Z.dot(lmm_mod.u))
 
 Parameter_Estimates = []
 
-for i in range(100):
+for i in range(1000):
     ix = np.random.choice(len(data), len(data), replace=True)
     lmm_mod = mv.LMM(fe, re, y, data.iloc[ix])
     lmm_mod.fit()
@@ -71,6 +71,7 @@ pstack.columns = ['iteration', 'parameter', 'value']
 sns.boxplot(x='parameter', y='value', data=pstack)
 sns.pointplot(x='parameter', y='value', data=pstack, join=False)
 sns.violinplot(x='parameter', y='value', data=pstack)
+sns.swarmplot(x='parameter', y='value', data=pstack)
 
 PEs.mean(axis=0)
 PEs.std(axis=0)
