@@ -41,6 +41,8 @@ glmm = mv.GLMM(sglm.fixed_effects+"-1", sglm.random_effects, "y", sglm.data,
 
 glmm.fit(n_iters=10)
 
+# These results are fairly similar to those given by saving this dataset as 
+# a csv and then running it in lme4
 
 
 
@@ -49,5 +51,15 @@ data.index = data.id
 data['awards'] = data['awards'].apply(pd.to_numeric, errors='coerce')
 data['cid']*=1.0
 
-glmm_mod = mv.GLMM("~1+C(female)", {"cid":"~1"}, "awards", data, mv.Poisson())
-glmm_mod.fit()
+glmm = mv.GLMM("~1+C(female)", {"cid":"~1"}, "awards", data, mv.Poisson())
+glmm.fit()
+glmm.res
+
+#intercept around -0.19(-0.22), fixed effect of 0.363(0.362), and 
+#random effect of 1.42(1.49)
+
+
+
+
+
+
