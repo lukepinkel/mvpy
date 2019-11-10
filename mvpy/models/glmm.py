@@ -19,7 +19,7 @@ from ..utils import linalg_utils, data_utils
 
 class WLMM(object):
 
-    def __init__(self, fixed_effects, random_effects, yvar, data, W, 
+    def __init__(self, fixed_effects, random_effects, yvar, data, W=None, 
                  error_structure=None, acov=None):
         '''
         Linear Mixed Model
@@ -57,6 +57,8 @@ class WLMM(object):
             among observational units (row covariance)
 
         '''
+        if W is None:
+            W = np.eye(data.shape[0])
         self.W = W
         self.Winv = np.linalg.inv(W)
         n_obs = data.shape[0]
@@ -438,8 +440,8 @@ class GLMM(WLMM):
         self.fe, self.re, self.yvar = fixed_effects, random_effects, yvar
         self.error_struct, self.acov = error_structure, acov
         self.data = data
-        self.mod = WLMM(fixed_effects, random_effects, yvar, data, 
-                       error_structure, acov, np.eye(data.shape[0]))        
+        self.mod = WLMM(fixed_effects, random_effects, yvar, data,
+                        W=np.eye(data.shape[0]), error_structure, acov)        
         self.mod.fit()
         self.y = self.mod.y
         
