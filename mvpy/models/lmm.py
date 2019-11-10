@@ -832,6 +832,10 @@ class WLMM(object):
         return H
     
 class GLMM(WLMM):
+    '''
+    Currently an extremely ineffecient implementation of a GLMM, mostly to
+    see if it worked.
+    '''
     def __init__(self, fixed_effects, random_effects, yvar, data, fam,
                  error_structure=None, acov=None):
         
@@ -856,6 +860,7 @@ class GLMM(WLMM):
             v = mu * (1 - mu)
             gp = self.f.link.dlink(mu)
             nu = eta + gp*(y - mu)
+            v = linalg_utils._check_1d(v)
             W = 1 / (v * (self.f.link.dlink(mu)**2)[:, 0])
             W = np.diag(1/np.sqrt(W))
             
