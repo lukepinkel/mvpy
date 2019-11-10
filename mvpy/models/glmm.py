@@ -1,10 +1,12 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Sep 11 20:03:34 2019
+Created on Sat Nov  9 23:42:55 2019
 
 @author: lukepinkel
 """
+
+
 import patsy
 import collections
 import numpy as np
@@ -15,10 +17,9 @@ import scipy.sparse as sps
 
 from ..utils import linalg_utils, data_utils
 
+class WLMM(object):
 
-class LMM(object):
-
-    def __init__(self, fixed_effects, random_effects, yvar, data,
+    def __init__(self, fixed_effects, random_effects, yvar, data, W, 
                  error_structure=None, acov=None):
         '''
         Linear Mixed Model
@@ -56,7 +57,8 @@ class LMM(object):
             among observational units (row covariance)
 
         '''
-
+        self.W = W
+        self.Winv = np.linalg.inv(W)
         n_obs = data.shape[0]
         X = patsy.dmatrix(fixed_effects, data=data, return_type='dataframe')
         fixed_effects = X.columns
@@ -220,7 +222,10 @@ class LMM(object):
         p1, p2 = int(partitions[-2]), int(partitions[-1])
         Verr = linalg_utils.invech(theta[p1:p2])
         R = np.kron(Verr, error_struct['acov'])
+        W, Winv = self.W, self.Winv
+        R = W.dot(R).dot(W)
         Rinv = np.kron(np.linalg.inv(Verr), error_struct['acov'])
+        Rinv = Winv.dot(Rinv).dot(Winv)
         G, Ginv = sp.linalg.block_diag(*Glist), sp.linalg.block_diag(*Ginvlist)
 
         SigE = Verr.copy()
@@ -421,4 +426,95 @@ class LMM(object):
         H = linalg_utils.invech(np.array(H))
         return H
     
-    
+class GLMM(WLMM):
+    '''
+    Currently an extremely ineffecient implementation of a GLMM, mostly to
+    see if it worked.
+    '''
+    def __init__(self, fixed_effects, random_effects, yvar, data, fam,
+                 error_structure=None, acov=None):
+        
+        self.f = fam
+        self.fe, self.re, self.yvar = fixed_effects, random_effects, yvar
+        self.error_struct, self.acov = error_structure, acov
+        self.data = data
+        self.mod = LMM(fixed_effects, random_effects, yvar, data, 
+                            error_structure, acov)
+        self.mod.fit()
+        self.y = self.mod.y
+        
+    def fit(self, n_iters=200, tol=1e-3):
+        
+        mod = self.mod
+        theta = mod.params
+        y = self.y
+        for i in range(n_iters):
+            eta = mod.predict()
+            
+            mu = self.f.inv_link(eta)
+            v = self.f.var_func(self.f.canonical_parameter(mu))
+            gp = self.f.link.dlink(mu)
+            nu = eta + gp*(y - mu)
+            v = linalg_utils._check_1d(v)
+            W = 1 / (v * (self.f.link.dlink(mu)**2)[:, 0])
+            W = np.diag(1/np.sqrt(W))
+            
+            
+            mod = WLMM(self.fe, self.re, self.yvar, self.data, W=W)
+            mod.y = nu
+            mod.fit()
+            tvar = (np.linalg.norm(theta)+np.linalg.norm(mod.params))
+            eps = np.linalg.norm(theta - mod.params) / tvar
+            if eps < tol:
+                break
+            theta = mod.params
+        self.mod = mod
+        res = self.mod.optimizer
+        self.params = res.x
+        G, Ginv, SigA, R, Rinv, SigE = self.mod.params2mats(res.x)
+        self.G, self.Ginv, self.R, self.Rinv = G, Ginv, R, Rinv
+        self.SigA, self.SigE = SigA, SigE
+        W = linalg_utils.woodbury_inversion(self.mod.Z, C=G, A=R)
+        X = self.mod.X
+        XtW = X.T.dot(W)
+        self.optimizer = res
+        self.hessian_est = self.mod.hessian(self.params)
+        self.hessian_inv = np.linalg.pinv(self.hessian_est)
+        self.SE_theta = np.sqrt(np.diag(self.hessian_inv))
+        self.grd = self.mod.gradient(self.params)
+        self.gnorm = np.linalg.norm(self.grd) / len(self.params)
+        self.b = linalg_utils.einv(XtW.dot(X)).dot(XtW.dot(self.mod.y))
+        self.SE_b = np.sqrt(np.diag(linalg_utils.einv(XtW.dot(X))))
+        self.r = self.mod.y - self.mod.X.dot(self.b)
+        self.u = G.dot(self.mod.Z.T.dot(W).dot(self.r))
+        res = pd.DataFrame(np.concatenate([self.params[:, None], self.b]),
+                           columns=['Parameter Estimate'])
+        res['Standard Error'] = np.concatenate([self.SE_theta, self.SE_b])
+        res['t value'] = res['Parameter Estimate'] / res['Standard Error']
+        res['p value'] = sp.stats.t.sf(np.abs(res['t value']),
+                                       X.shape[0]-len(self.params)) * 2.0
+        res.index = self.mod.res_names
+        self.res = res
+        n_obs, k_params = self.mod.X.shape[0], len(self.params)
+        
+        self.ll = self.mod.loglike(self.params)
+        self.aic = self.ll + (2 * k_params)
+        self.aicc = self.ll + 2*k_params*n_obs / (n_obs - k_params - 1)
+        self.bic = self.ll + k_params*np.log(n_obs)
+        self.caic = self.ll + k_params * np.log(n_obs+1)
+        self.r2_fe = 1 - np.var(self.mod.y - self.mod.X.dot(self.b)) / np.var(self.mod.y)
+        self.r2_re = 1 - np.var(self.mod.y - self.mod.Z.dot(self.u)) / np.var(self.mod.y)
+        self.r2 = 1 - np.var(self.mod.y - self.mod.predict()) / np.var(self.mod.y)
+        self.sumstats = np.array([self.aic, self.aicc, self.bic, self.caic,
+                                  self.r2_fe, self.r2_re, self.r2])
+        self.sumstats = pd.DataFrame(self.sumstats, index=['AIC', 'AICC', 'BIC',
+                                                           'CAIC', 
+                                                           'FixedEffectsR2',
+                                                           'RandomEffectsR2', 
+                                                           'R2'])
+        
+        
+        
+        
+        
+   

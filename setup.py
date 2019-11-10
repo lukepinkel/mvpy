@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
     name="mvpy",
-    version="0.6.2",
+    version="0.6.3",
     url="https://github.com/lukepinkel/mvpy",
     packages=setuptools.find_packages(),
     classifiers=[
