@@ -857,7 +857,7 @@ class GLMM(WLMM):
             eta = mod.predict()
             
             mu = self.f.inv_link(eta)
-            v = mu * (1 - mu)
+            v = self.f.var_func(self.f.canonical_parameter(mu))
             gp = self.f.link.dlink(mu)
             nu = eta + gp*(y - mu)
             v = linalg_utils._check_1d(v)
