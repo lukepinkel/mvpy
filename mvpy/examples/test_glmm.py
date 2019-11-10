@@ -5,6 +5,7 @@ Created on Sat Nov  9 23:49:38 2019
 
 @author: lukepinkel
 """
+
 import numpy as np
 import scipy as sp
 import scipy.stats
