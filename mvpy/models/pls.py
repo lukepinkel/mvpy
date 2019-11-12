@@ -811,12 +811,12 @@ class sCCA:
             V[i] = wy
         return U, V
     
-    def cross_val(self,  mu_range=None, reg_params=None, split_ratio=.7,
-                  n_iters=100, n_comps=None, vocal=True):
+    def cross_val(self,  mu_range=None, reg_params=None, split_ratio=.6,
+                  n_iters=5, n_comps=None, vocal=True):
         if mu_range is None:
-            mu_range = np.arange(1.0, 20, 5)
+            mu_range = np.arange(0.1, 5, 0.1)
         if reg_params is None:
-            reg_params = np.arange(0.05, 2.0, 0.3)
+            reg_params = np.arange(0.05, 2.0, 0.05)
         X, Y = self.X, self.Y
         xvals_mu = []
         m = np.round(split_ratio*self.n)

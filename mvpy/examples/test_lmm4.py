@@ -51,7 +51,7 @@ res = []
 
 k = 1
 mean_dur = 0.0
-#6000 iterations -- 2 hours
+#1200 iterations -- 1.5 hours
 for n_units in range(50, 100, 25): #2
     #n_units=50
         for n_unit_obs in range(4, 6):  #2
@@ -64,9 +64,9 @@ for n_units in range(50, 100, 25): #2
                 vscale=4
                 escale=2
                 bscale=2
-                    
+                #2x2x6x50
                 
-                for i in range(50): #10
+                for i in range(50): #50
                     start = time.time()
                     Sv = mv.vine_corr(n_levels*n_level_effects, beta_params_v)
                     Se = mv.vine_corr(n_levels, beta_params_e)
