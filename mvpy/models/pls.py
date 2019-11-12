@@ -811,12 +811,14 @@ class sCCA:
             V[i] = wy
         return U, V
     
-    def cross_val(self,  mu_range=None, reg_params=None, split_ratio=.6,
+    def cross_val(self,  mu_range=None, xlam=None, ylam=None, split_ratio=.6,
                   n_iters=5, n_comps=None, vocal=True):
         if mu_range is None:
             mu_range = np.arange(0.1, 5, 0.1)
-        if reg_params is None:
-            reg_params = np.arange(0.05, 2.0, 0.05)
+        if xlam is None:
+            xlam = np.arange(0.05, 2.0, 0.05)
+        if ylam is None:
+            ylam = np.arange(0.05, 2.0, 0.05)
         X, Y = self.X, self.Y
         xvals_mu = []
         m = np.round(split_ratio*self.n)
@@ -830,7 +832,7 @@ class sCCA:
             xvals_mu_i = []
             for mu_k in mu_range:
                 U, V = self._fit(Xtr, Ytr, n_comps=n_comps, mu=mu_k)
-                r = np.trace(np.abs(cov(Xte.dot(U.T),Yte.dot(V.T))))
+                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
                 xvals_mu_i.append(r)
                 if vocal is True:
                     print(i, mu_k)
@@ -846,18 +848,39 @@ class sCCA:
             Xtr, Ytr = X[idx], Y[idx]
             Xte, Yte = X[1-idx], Y[1-idx]
             xvals_reg_i = []
-            for reg in reg_params:
-                U, V = self._fit(Xtr, Ytr, n_comps=n_comps, lx=reg, ly=reg)
-                r = np.trace(np.abs(cov(Xte.dot(U.T),Yte.dot(V.T))))
+            for xr in xlam:
+                U, V = self._fit(Xtr, Ytr, n_comps=n_comps, lx=xr, ly=xr)
+                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
                 xvals_reg_i.append(r)
                 if vocal is True:
-                    print(i, reg)
+                    print(i, xr)
             xvals_reg.append(xvals_reg_i)
             
         xvals_reg = np.array(xvals_reg)
-        reg = reg_params[np.argmax(xvals_reg.mean(axis=0))]
+        xreg = xlam[np.argmax(xvals_reg.mean(axis=0))]
+        yvals_reg = []
+        
+        for i in range(n_iters):
+            idx = np.zeros(self.n)
+            ix = np.random.choice(self.n, int(m), replace=False)
+            idx[ix] = 1.0
+            idx = idx.astype(bool)
+            Xtr, Ytr = X[idx], Y[idx]
+            Xte, Yte = X[1-idx], Y[1-idx]
+            xvals_reg_i = []
+            for yr in ylam:
+                U, V = self._fit(Xtr, Ytr, n_comps=n_comps, lx=xreg, ly=yr)
+                r = np.trace(np.abs(corr(Xte.dot(U.T),Yte.dot(V.T))))
+                xvals_reg_i.append(r)
+                if vocal is True:
+                    print(i, xr)
+            yvals_reg.append(xvals_reg_i)
+            
+        yvals_reg = np.array(yvals_reg)
+        yreg = ylam[np.argmax(yvals_reg.mean(axis=0))]
+        
         mu = mu_range[np.argmax(xvals_mu.mean(axis=0))]
-        return xvals_reg, xvals_mu, reg, mu
+        return xvals_reg, yvals_reg, xvals_mu, xreg, yreg, mu
         
         
             
