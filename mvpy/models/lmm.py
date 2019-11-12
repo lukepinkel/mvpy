@@ -281,6 +281,7 @@ class LMM(object):
         logdetC = 2*np.sum(np.log(np.diag(L)[:-1]))
         yPy = L[-1, -1]**2
         logdetG = 0.0
+        #This needs to be fixed for the more general case
         for key, Vi in list(zip(re_struct.keys(), SigA)):
             logdetG += re_struct[key]['n_units']*np.linalg.slogdet(Vi)[1]
         logdetR = error_struct['acov'].shape[0]*np.linalg.slogdet(SigE)[1]
