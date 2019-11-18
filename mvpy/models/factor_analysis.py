@@ -453,7 +453,8 @@ class CFA:
         else:
             q = np.sum(constraints)
         
-        self.ll_full = -n/2*(np.log(np.linalg.det(Sigma))+np.trace(np.dot(S, np.linalg.inv(Sigma)))\
+        self.ll_full = -n/2*(np.log(np.linalg.det(Sigma))+np.trace(np.dot(S, 
+                             np.linalg.inv(Sigma)))\
                              - np.log(np.linalg.det(S))-p)
         self.df = 0.5*p*(p+1.0)-p*k-0.5*k*(k+1)-p+q+np.max([q, k])
         

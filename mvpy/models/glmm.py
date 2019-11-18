@@ -441,7 +441,8 @@ class GLMM(WLMM):
         self.error_struct, self.acov = error_structure, acov
         self.data = data
         self.mod = WLMM(fixed_effects, random_effects, yvar, data,
-                        W=np.eye(data.shape[0]), error_structure, acov)        
+                        W=np.eye(data.shape[0]), error_structure=None,
+                        acov=None)        
         self.mod.fit()
         self.y = self.mod.y
         
