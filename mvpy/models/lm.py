@@ -482,4 +482,144 @@ class OLS(GeneralLinearModel):
         self.res['p_value'] = sp.stats.t.sf(abs(self.res['t_value']), 
                                             self.n-self.p)*2.0
                 
+
+class Huber:
     
+    def __init__(self):
+        self.c0 = 1.345
+        self.c1 = 0.6745
+        
+    def rho_func(self, u):
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixa] = u[ixa]**2
+        v[ixb] = np.abs(2*u[ixb])*self.c0 - self.c0**2
+        return v
+    
+    def psi_func(self, u):
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixb] = self.c0 * np.sign(u[ixb])
+        return v
+    
+    def phi_func(self, u):
+        v = u.copy()
+        ixa = np.abs(u) <= self.c0
+        ixb = ~ixa
+        v[ixa] = 1
+        v[ixb] = 0
+        return v
+    
+    def weights(self, u):
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixa] = 1
+        v[ixb] = self.c0 / np.abs(u[ixb])
+        return v
+        
+class Bisquare:
+    
+    def __init__(self):
+        self.c0 = 4.685
+        self.c1 = 0.6745
+    
+    def rho_func(self, u):
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) < c
+        ixb = ~ixa
+        v[ixa] = c**2 / 3 * (1 - ((1 - (u[ixa] / c)**2)**3))
+        v[ixb] = 2 * c
+        return v
+    
+    def psi_func(self, u):
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) <= c
+        ixb = ~ixa
+        v[ixa] = u * (1 - (u / c)**2)**2
+        v[ixb] = 0
+        return v
+    
+    def phi_func(self, u):
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) <= self.c0
+        ixb = ~ixa
+        u2c2 = (u**2 / c**2)
+        v[ixa] = (1 -u2c2) * (1 - 5 * u2c2)
+        v[ixb] = 0
+        return v
+    
+    def weights(self, u):
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) < c
+        ixb = ~ixa
+        v[ixa] = (1 - (u / c)**2)**2
+        v[ixb] = 0
+        return v
+        
+
+class RLS:
+    
+    def __init__(self, formula, data, method=Huber()):
+        self.f = method
+        self.Ydf, self.Xdf = patsy.dmatrices(formula, data, 
+                                             return_type='dataframe')
+        
+        self.X, self.xcols, self.xix, _ = base_utils.check_type(self.Xdf)
+        self.Y, self.ycols, self.yix, _ = base_utils.check_type(self.Ydf)
+        self.n_obs, self.p = self.X.shape
+    
+    def scale(self, r):
+        s = np.median(np.abs(r - np.median(r))) / sp.stats.norm.ppf(.75)
+        return s
+        
+    def fit(self, n_iters=200, tol=1e-10):
+        X, Y = self.X, self.Y
+        n, p = self.n_obs, self.p
+        w = np.ones((self.n_obs, 1))
+        b0 = np.zeros(p)
+        dhist = []
+        for i in range(n_iters):
+            if w.ndim==1:
+                w = w.reshape(w.shape[0], 1)
+            Xw = X * w
+            XtWX_inv = np.linalg.pinv(np.dot(Xw.T, X))
+            beta = XtWX_inv.dot(np.dot(Xw.T, Y))
+            resids = linalg_utils._check_1d(Y) - linalg_utils._check_1d(X.dot(beta))
+            s = self.scale(resids)
+            u = resids / s
+            w = self.f.weights(u)
+            
+            db = linalg_utils.normdiff(beta, b0)
+            dhist.append(db)
+            if db < tol:
+                break
+            b0 = beta
+        G = np.linalg.inv(np.dot(X.T, X))
+        mse = (self.f.psi_func(u)**2).mean()
+        mse /= (self.f.phi_func(u)).mean()**2
+        se = np.sqrt(np.diag(G*mse))
+        self.Gw = XtWX_inv
+        self.gram = G
+        self.mse = mse
+        self.beta = beta
+        self.se = se
+        self.u = u
+        self.w = w
+        self.resids = resids
+        self.dhist = dhist
+        beta = linalg_utils._check_1d(beta)
+        res = np.vstack([beta, self.se, beta/self.se]).T
+        res = pd.DataFrame(res, columns=['beta', 'se', 't'],
+                           index=self.Xdf.columns)
+        res['p'] = sp.stats.t.sf(np.abs(res['t']), n-p)
+        self.res = res
+        
+            
+            

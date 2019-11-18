@@ -7,10 +7,10 @@ Created on Wed Sep 11 22:00:28 2019
 """
 
 
-from mvpy.utils.base_utils import (csd, corr, check_type, cov, masked_invalid,
+from mvpy.utils.base_utils import (csd, corr, check_type, cov, masked_invalid,#analysis:ignore
                                   center, standardize, valid_overlap)
 from mvpy.models.mv_rand import vine_corr, multi_rand
-from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2, 
+from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2,  #analysis:ignore
                                     fprime, fprime_cs, hess_approx, inv_sqrth,
                                     inv_sqrt, invec, invech, jmat, khatri_rao,
                                     kmat, kronvec_mat, lmat, lstq, lstq_pred, dmat,
@@ -20,19 +20,21 @@ from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2,
                                     sparse_cholesky, sparse_kmat, svd2, spsweep, 
                                     sweep, symm_deriv, vec, vecc, vech, vechc,
                                     whiten, woodbury_inversion,
-                                    wpca, xiprod, xprod, zca, rotate)
+                                    wpca, xiprod, xprod, zca, 
+                                    rotate) 
 
-from mvpy.models.mv_rand import vine_corr, multi_rand, random_correlations
-from mvpy.models.pls import PLS_SEM, CCA, PLSC, PLSR
-from mvpy.models.sem2 import SEM
-from mvpy.models.clm import CLM
-from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis
-from mvpy.models.lmm import LMM
-from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr
-from mvpy.models.lm import LM, OLS, MassUnivariate
-from mvpy.models.glm2 import GLM, Bernoulli, Poisson, Normal, LogitLink, ProbitLink, LogLink, ReciprocalLink
-from mvpy.models.nb2 import NegativeBinomial
-from mvpy.models.glmm import GLMM
+from mvpy.models.mv_rand import vine_corr, multi_rand, random_correlations#analysis:ignore
+from mvpy.models.pls import PLS_SEM, CCA, PLSC, PLSR, sCCA#analysis:ignore
+from mvpy.models.sem2 import SEM#analysis:ignore
+from mvpy.models.clm import CLM#analysis:ignore
+from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis#analysis:ignore
+from mvpy.models.lmm import LMM#analysis:ignore
+from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr#analysis:ignore
+from mvpy.models.lm import LM, OLS, MassUnivariate, RLS, Huber, Bisquare#analysis:ignore
+from mvpy.models.glm2 import (GLM, Bernoulli, Poisson, Normal, LogitLink,#analysis:ignore
+                              ProbitLink, LogLink, ReciprocalLink)
+from mvpy.models.nb2 import NegativeBinomial#analysis:ignore
+from mvpy.models.glmm import GLMM#analysis:ignore
 
 
 

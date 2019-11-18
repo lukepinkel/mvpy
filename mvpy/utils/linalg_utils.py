@@ -1054,3 +1054,13 @@ def confound_adjust(Y, Confounds):
     return Ya
 
 
+def normdiff(a, b):
+    diff = np.linalg.norm(a - b)
+    diff /= (np.linalg.norm(a) + np.linalg.norm(b))
+    return diff
+
+
+
+
+
+

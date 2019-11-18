@@ -382,133 +382,65 @@ def qscorr(X):
     R = qsc(X)
     return R
 
-
-class MultivarAssociationA:
-    
-    def __init__(self, SSE, SSH, SST, n, p, q, SSE_inv=None, SST_inv=None):
-        self.p, self.q, self.s = p, q, np.minimum(p, q)
-        k = p**2*q**2
-        if k<=4:
+def multivariate_association_tests(rho2, a, b, dfe):
+        a2, b2 = a**2, b**2
+        if a2*b2 <= 4:
             g = 1
         else:
-            g = np.sqrt((k - 4) / (p**2 + p**2 - 5))
-        self.g = g
-        if SST_inv is None:
-            SST_inv = np.linalg.pinv(SST)
-        if SSE_inv is None:
-            SSE_inv = np.linalg.pinv(SSE)
+            g = np.sqrt((a2*b2-4) / (a2 + b2 - 5))
         
-        self.SSE, self.SSH, self.SST = SSE, SSH, SST
-        self.SSE_inv, self.SST_inv = SSE_inv, SST_inv
-        dfe = n - p
-        self.dfe = dfe
-        
-        df_hlt = (dfe**2 - dfe*(2*q+3)+q*(q+3)) * (p*q+2)
-        df_hlt/= dfe * (p + q + 1) - (p + 2 * q + q**2 - 1)
-        df_hlt+=4
-        
-        df_pbt = (self.s * dfe + self.s - q)
-        df_pbt*= (dfe+p+2)*(dfe + p - 1)
-        df_pbt/= dfe * (dfe + p - q)
-        df_pbt -= 2
-        df_pbt *= (dfe + self.s - q)/(dfe + p)
-        
-        df_wlk = g * (dfe - (q - p + 1) / 2) - (p*q-2) / 2
-        
-        df2_pbt = self.s * (self.dfe+self.s - q) * (self.dfe + p + 2)
-        df2_pbt*= (self.dfe + p - 1)
-        df2_pbt/= (self.dfe * (self.dfe + p - q))
-        df2_pbt*= (p*q) / (self.s * (self.dfe + self.p))
-        
-        
-        self.df1_hlt = df_hlt
-        self.df2_hlt = p * q
-        self.df1_pbt = df_pbt
-        self.df2_pbt = df2_pbt
-        self.df1_wlk = df_wlk
-        self.df2_wlk = p * q
-        
-        
-    
-    def hotelling_lawley(self):
-        hlt = np.trace(self.SSH.dot(self.SSE_inv))
-        u = hlt / self.s
-        eta = u / (1.0 + u)
-        return hlt, eta
-    def pillai_bartlett_trace(self):
-        pbt = np.trace(self.SSH.dot(self.SST_inv))
-        eta = pbt / self.s
-        return pbt, eta
-    
-    def wilks_likelihood(self):
-        wlk = np.linalg.det(self.SSE.dot(self.SST_inv))
-        eta = 1 - np.power(wlk, 1.0/self.g)
-        return wlk, eta
-
-    def roy_largest_root(self):
-        u, V = np.linalg.eigh(self.SSH.dot(self.SST_inv))
-        rlr = np.max(u)
-        return rlr, rlr
-
-def _multivar_tests(rho2, n, p, q, r):
-    a, b, dfe = p, q, n - r
-    a2, b2 = a**2, b**2
-    if a2*b2 <= 4:
-        g = 1
-    else:
-        g = np.sqrt((a2*b2-4) / (a2 + b2 - 5))
         s = np.min([a, b])
-    tst_hlt = np.sum(rho2/(1-rho2))
-    tst_pbt = np.sum(rho2)
-    tst_wlk = np.product(1-rho2)
-    tst_rlr = np.max(rho2/(1-rho2))
-    
-    eta_hlt = (tst_hlt/s) / (1 + tst_hlt/s)
-    eta_pbt = tst_pbt / s
-    eta_wlk = 1 - np.power(tst_wlk, (1/g))
-    eta_rlr = np.max(rho2)
-    
-    test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk,]).T
-    effect_sizes = np.vstack([eta_hlt, eta_pbt, eta_wlk]).T
-    test_stats = pd.DataFrame(test_stats, columns=['HLT', 'PBT', 'WLK'])
-    effect_sizes = pd.DataFrame(effect_sizes, columns=['HLT', 'PBT', 'WLK'])
-    
-    df_hlt1 = a * b
-    df_wlk1 = a * b
-    df_rlr1 = np.max([a, b])
+        tst_hlt = np.sum(rho2/(1-rho2))
+        tst_pbt = np.sum(rho2)
+        tst_wlk = np.product(1-rho2)
+        tst_rlr = np.max(rho2/(1-rho2))
+        
+        eta_hlt = (tst_hlt/s) / (1 + tst_hlt/s)
+        eta_pbt = tst_pbt / s
+        eta_wlk = 1 - np.power(tst_wlk, (1/g))
+        eta_rlr = np.max(rho2)
+        
+        test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk,]).T
+        effect_sizes = np.vstack([eta_hlt, eta_pbt, eta_wlk]).T
+        test_stats = pd.DataFrame(test_stats, columns=['HLT', 'PBT', 'WLK'])
+        effect_sizes = pd.DataFrame(effect_sizes, columns=['HLT', 'PBT', 'WLK'])
+        
+        df_hlt1 = a * b
+        df_wlk1 = a * b
+        df_rlr1 = np.max([a, b])
 
-    df_pbt1 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
-    df_pbt1 /= (dfe * (dfe + a - b))
-    df_pbt1 -= 2
-    df_pbt1 *= (a * b) / (s * (dfe + a))
+        df_pbt1 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
+        df_pbt1 /= (dfe * (dfe + a - b))
+        df_pbt1 -= 2
+        df_pbt1 *= (a * b) / (s * (dfe + a))
 
-    df_hlt2 = (dfe**2 - dfe * (2 * b + 3) + b * (b + 3)) * (a * b + 2)
-    df_hlt2 /= (dfe * (a + b + 1) - (a + 2 * b + b2 - 1))
-    df_hlt2 += 4
+        df_hlt2 = (dfe**2 - dfe * (2 * b + 3) + b * (b + 3)) * (a * b + 2)
+        df_hlt2 /= (dfe * (a + b + 1) - (a + 2 * b + b2 - 1))
+        df_hlt2 += 4
 
-    df_pbt2 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
-    df_pbt2 /= dfe * (dfe + a - b)
-    df_pbt2 -= 2
-    df_pbt2 *= (dfe + s - b) / (dfe + a)
+        df_pbt2 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
+        df_pbt2 /= dfe * (dfe + a - b)
+        df_pbt2 -= 2
+        df_pbt2 *= (dfe + s - b) / (dfe + a)
 
-    df_wlk2 = g * (dfe - (b - a + 1) / 2) - (a * b - 2) / 2
-    df_rlr2 = dfe - np.max([a, b]) + b
-    df1 = np.array([df_hlt1, df_pbt1, df_wlk1])
-    df2 = np.array([df_hlt2, df_pbt2, df_wlk2])
-    f_values = (effect_sizes / df1) / ((1 - effect_sizes) / df2)
-    p_values = sp.stats.f.sf(f_values, df1, df2)
-    p_values = pd.DataFrame(p_values, columns=effect_sizes.columns)
-    df1 = pd.DataFrame(df1, index=effect_sizes.columns).T
-    df2 = pd.DataFrame(df2, index=effect_sizes.columns).T
-    f_rlr = tst_rlr * (df_rlr2 / df_rlr1)
-    p_rlr = sp.stats.f.sf(f_rlr, df_rlr1, df_rlr2)
-    rlr = pd.DataFrame([tst_rlr, eta_rlr, f_rlr, df_rlr1, df_rlr2, p_rlr])
-    rlr.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
-    rlr.columns = ['RLR']
-    rlr = rlr.T
-    sumstats = pd.concat([test_stats, effect_sizes, f_values, df1, df2, 
-                          p_values])
-    sumstats.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
-    sumstats = sumstats.T
-    sumstats = pd.concat([sumstats, rlr])
-    return sumstats
+        df_wlk2 = g * (dfe - (b - a + 1) / 2) - (a * b - 2) / 2
+        df_rlr2 = dfe - np.max([a, b]) + b
+        df1 = np.array([df_hlt1, df_pbt1, df_wlk1])
+        df2 = np.array([df_hlt2, df_pbt2, df_wlk2])
+        f_values = (effect_sizes / df1) / ((1 - effect_sizes) / df2)
+        p_values = sp.stats.f.sf(f_values, df1, df2)
+        p_values = pd.DataFrame(p_values, columns=effect_sizes.columns)
+        df1 = pd.DataFrame(df1, index=effect_sizes.columns).T
+        df2 = pd.DataFrame(df2, index=effect_sizes.columns).T
+        f_rlr = tst_rlr * (df_rlr2 / df_rlr1)
+        p_rlr = sp.stats.f.sf(f_rlr, df_rlr1, df_rlr2)
+        rlr = pd.DataFrame([tst_rlr, eta_rlr, f_rlr, df_rlr1, df_rlr2, p_rlr])
+        rlr.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
+        rlr.columns = ['RLR']
+        rlr = rlr.T
+        sumstats = pd.concat([test_stats, effect_sizes, f_values, df1, df2, 
+                              p_values])
+        sumstats.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
+        sumstats = sumstats.T
+        sumstats = pd.concat([sumstats, rlr])
+        return sumstats, effect_sizes, rho2
