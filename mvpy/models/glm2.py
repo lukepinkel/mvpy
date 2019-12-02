@@ -294,6 +294,70 @@ class Bernoulli:
         lnb[ixb] = np.log((1-y[ixb])/(1-mu[ixb]))
         d = y*lna+(1-y)*lnb
         return 2*d
+    
+
+class Binomial:
+    
+    def __init__(self, weights=None, link='canonical'):
+        if weights is None:
+            self.weights = np.ones(1)
+        self.dist = 'binomial'
+        if link == 'canonical':
+            self.link=LogitLink()
+            self.type_='canonical'
+        else:
+            self.link = link
+            self.type_='noncanonical'
+            
+    def canonical_parameter(self, mu):
+        u = mu / (self.weights  - mu)
+        T = np.log(u)
+        return T
+    
+    def inv_link(self, eta):
+        return self.link.inv_link(eta)
+        
+    def dinv_link(self, eta):
+        return self.link.dinv_link(eta)
+    
+    def d2inv_link(self, eta):
+        return self.link.d2inv_link(eta)
+    
+    def cumulant(self, T):
+        u = 1 + np.exp(T)
+        b = np.log(u)
+        return b
+    
+    def mean_func(self, T):
+        u = np.exp(T)
+        mu = u / (1 + u)
+        return mu
+    
+    def var_func(self, T):
+        mu = self.mean_func(T)
+        V = linalg_utils. _check_1d(mu * (1 - mu))
+        return V
+                
+    def d2canonical(self, mu):
+        res = 1.0/((1.0 - mu)**2)-1.0/(mu**2)
+        return res
+    
+    def unpack_params(self, params):
+        beta = params
+        phi = 1.0
+        return beta, phi
+    
+    def deviance(self, params, X, Y):
+        y = linalg_utils. _check_1d(Y)
+        mu = self.inv_link(X.dot(params))
+        lna, lnb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
+        ixa, ixb = (y/mu)>0, ((1-y)/(1-mu))>0
+        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
+        lnb[ixb] = np.log((1-y[ixb])/(1-mu[ixb]))
+        d = y*lna+(1-y)*lnb
+        return 2*d
+    
+
         
 
 class Poisson:

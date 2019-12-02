@@ -55,4 +55,4 @@ def initialize_lmm(n_units=50, n_unit_obs=5, n_levels=2, n_level_effects=2,
     fixed_effects = "~x1+1"
     random_effects = {"id":"~x1+1"}
     yvar = ["y%i"%i for i in range(1, 1+n_levels)]
-    return fixed_effects, random_effects, yvar, data, Sv, Se
+    return fixed_effects, random_effects, yvar, data, Sv, Se, beta

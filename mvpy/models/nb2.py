@@ -26,6 +26,7 @@ class MinimalNB2:
         self.beta = np.zeros(self.n_feats)
         self.varp = np.ones(1)/2.0
         self.params = np.concatenate([self.beta, self.varp])
+        self.cnst = [(None, None) for i in range(self.n_feats)]+[(1e-16, None)]
     
     def loglike(self, params, X=None):
         if X is None:
@@ -90,6 +91,7 @@ class MinimalNB2:
         params = self.params
         optimizer = sp.optimize.minimize(self.loglike, params, jac=self.gradient, 
                              hess=self.hessian, method='trust-constr',
+                             bounds=self.cnst,
                              options={'verbose':verbose})
         self.optimize = optimizer
         self.params = optimizer.x
@@ -119,6 +121,7 @@ class NegativeBinomial:
         self.beta = np.zeros(self.n_feats)
         self.varp = np.ones(1)/2.0
         self.params = np.concatenate([self.beta, self.varp])
+        self.cnst = [(None, None) for i in range(self.n_feats)]+[(1e-16, None)]
     
     def loglike(self, params, X=None):
         if X is None:
@@ -204,8 +207,11 @@ class NegativeBinomial:
         intercept_model.fit()
         self.LL0 = intercept_model.LLA
         params = self.params
-        optimizer = sp.optimize.minimize(self.loglike, params, jac=self.gradient, 
-                             hess=self.hessian, **optimizer_kwargs)
+        optimizer = sp.optimize.minimize(self.loglike, params,
+                                         jac=self.gradient, 
+                                         hess=self.hessian,
+                                         bounds=self.cnst,
+                                         **optimizer_kwargs)
         
         self.optimizer = optimizer
         self.params = optimizer.x
@@ -215,6 +221,10 @@ class NegativeBinomial:
         self.params_se = np.sqrt(np.diag(self.vcov))
         self.res = pd.DataFrame(np.vstack([self.params, self.params_se]),
                                 columns=self.xcols.tolist()+['variance']).T
+        self.res.columns = ['param', 'SE']
+        self.res['t'] = self.res['param']/self.res['SE']
+        self.res['p'] = sp.stats.t.sf(np.abs(self.res['t']),
+                        self.n_obs-self.n_feats)*2.0
         self.LLR = -(self.LLA - self.LL0)
         self.BIC = -(np.log(self.n_obs) * len(self.params) - 2 * self.LLA)
         self.AIC = -(2 * len(self.params) - 2 * self.LLA)
