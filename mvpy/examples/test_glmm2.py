@@ -51,6 +51,35 @@ fam =mv.Bernoulli()
 glmm = mv.GLMM("~x", {"id":"~1"}, "y3", data=df, fam=fam)
 glmm.fit(n_iters=10)
 
+print(glmm.res)
+print(glmm.u)
+print(glmm.b)
+
+nu_hat = pd.DataFrame(glmm.predict(glmm.mod.X, glmm.mod.Z), columns=['y'])
+yhat = (nu_hat>0.0)*1.0
+    
+fig, ax = plt.subplots(ncols=2)
+ax[0].scatter(nu_hat, df[['y2']], alpha=0.2)
+bp1 = ax[1].boxplot(nu_hat[df['y3']==1].values[:, 0], positions=[1], 
+        widths=0.8, patch_artist=True)
+bp2 = ax[1].boxplot(nu_hat[df['y3']==0].values[:, 0], positions=[0], 
+        widths=0.8, patch_artist=True)
+
+
+c1 = (0.12156862745098039, 0.4666666666666667,  0.7058823529411765)
+c2 = (1.0, 0.4980392156862745, 0.054901960784313725)
+
+for bp, color in list(zip([bp1, bp2], [c1, c2])):
+    for element in ['boxes', 'whiskers', 'fliers', 'means', 'medians', 'caps']:
+        plt.setp(bp[element], color='k')
+    
+    for patch in bp['boxes']:
+        patch.set(facecolor=color, alpha=.9)   
+    
+
+mng = plt.get_current_fig_manager()
+mng.window.showMaximized()
+fig.tight_layout()
 
 
 
