@@ -25,7 +25,7 @@ from mvpy.utils.linalg_utils import (blockwise_inv, chol, whiten, diag2,  #analy
 
 from mvpy.models.mv_rand import vine_corr, multi_rand, random_correlations#analysis:ignore
 from mvpy.models.pls import PLS_SEM, CCA, PLSC, PLSR, sCCA#analysis:ignore
-from mvpy.models.sem2 import SEM#analysis:ignore
+from mvpy.models.sem2 import SEM, parse_formula#analysis:ignore
 from mvpy.models.clm import CLM#analysis:ignore
 from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis#analysis:ignore
 from mvpy.models.lmm import LMM#analysis:ignore
