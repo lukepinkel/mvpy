@@ -121,6 +121,91 @@ class ObjFuncML:
 # TODO: Add formula parser, so that dependent vars have free params in TH
 #       and independent vars have free covariance in PH 
 
+
+def parse_formula(mod, columns):
+    eqs = [x.strip() for x in mod.split('\n') if len(x.strip())>0]
+    measurement_model = [x for x in eqs if x.find("=")!=-1]
+    structural_model = [x for x in eqs if x.find("~")!=-1]
+    slhs, srhs = list(zip(*[[y.strip() for y in x.split("~")] for x in structural_model]))
+    
+    
+    if len(measurement_model)>0:
+        mlhs, mrhs = list(zip(*[[y.strip() for y in x.split("=")] for x in measurement_model]))
+        mlhs, mrhs = list(mlhs), list(mrhs)
+    else:
+        mlhs, mrhs = [], []
+    
+    
+    
+    for eq in srhs:
+        for v in eq.split("+"):
+            if v.strip() in columns:
+                if v.strip() not in mlhs:
+                    mlhs.append(v)
+                    mrhs.append(v)
+    for v in slhs:
+            if v.strip() in columns:
+                if v.strip() not in mlhs:
+                    mlhs.append(v)
+                    mrhs.append(v)
+    q = []
+    for x in mrhs:
+        z = x.split('+')
+        for y in z:
+            if y not in q:
+                q.append(y)
+    Lambda = np.zeros((len(q), len(mlhs)))
+    
+    Lambda = pd.DataFrame(Lambda, index=q, columns=mlhs)
+    
+    for i, x in enumerate(Lambda.columns):
+        for v in mrhs[i].split('+'):
+            vk = v.strip()
+            Lambda.loc[vk, x] = 1
+    
+    Beta = pd.DataFrame(np.zeros((len(mlhs), len(mlhs))), index=Lambda.columns,
+                        columns=Lambda.columns)
+    
+    for i, x in enumerate(slhs):
+        for v in srhs[i].split('+'):
+            vk = v.strip()
+            a = np.where(Beta.index==x)[0][0]
+            b = np.where(Beta.columns==vk)[0][0]
+            if b>a:
+                ix = Beta.index.tolist()
+                ix[a], ix[b] = ix[b], ix[a]
+                Beta = Beta.loc[ix, ix]
+                Beta.loc[x, vk] = 1
+            else:
+                Beta.loc[x, vk] = 1
+    Lambda = Lambda.reindex(Beta.index, axis=1)     
+       
+    Phi = pd.DataFrame(np.eye(len(mlhs)), index=Lambda.columns,
+                        columns=Lambda.columns)
+    
+    exog = []
+    endog = []
+    
+        
+    for x in Phi.columns:         
+        if x in Lambda.index:
+            if x not in slhs:
+                exog.append(x)
+            elif x in slhs:
+                endog.append(x)
+            
+    for i,x in enumerate(exog):
+        for j,y in enumerate(exog):
+            if i!=j:
+                Phi.loc[x, y] = 0.1
+    Psi = pd.DataFrame(np.eye(len(q)), index=q, columns=q)
+    
+    for x in exog:
+        Psi.loc[x, x] = 0
+    return Lambda, Beta, Phi, Psi
+
+
+
 class SEM:
     """
     Structural Equation Model
