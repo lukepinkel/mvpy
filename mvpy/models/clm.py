@@ -214,7 +214,7 @@ class CLM:
         intercept_model.fit()
         self.intercept_model = intercept_model
         theta = statfunc_utils.norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
-        beta = ones(self.X.shape[1])
+        beta = ones(self.X.shape[1])*0 #vulnerable to (under)overflow
         params = np.concatenate([theta, beta], axis=0)
         self.theta_init = theta
         self.params_init = params
