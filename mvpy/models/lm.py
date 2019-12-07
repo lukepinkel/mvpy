@@ -178,8 +178,7 @@ class MassUnivariate:
 
     def __init__(self, X, Y):
         R = base_utils.corr(X, Y)
-        Z = pd.concat([X, Y], axis=1)
-        u, V = np.linalg.eigh(base_utils.corr(Z))
+        u, V = np.linalg.eigh(base_utils.corr(X))
         u = u[::-1]
         eigvar = np.sum((u - 1.0)**2) / (len(u) - 1.0)
 
@@ -395,67 +394,11 @@ class OLS(GeneralLinearModel):
         Se = dfe * Sigma_star
         Sh = np.linalg.multi_dot([Td.T, Minv, Td])
         a, b, dfe = self.p, self.q, self.n - self.r
-        a2, b2 = a**2, b**2
-        if a2*b2 <= 4:
-            g = 1
-        else:
-            g = np.sqrt((a2*b2-4) / (a2 + b2 - 5))
-        
-        rho2, _ = np.linalg.eig(Sh.dot(np.linalg.inv(Sh+Se/dfe)))
-        s = np.min([a, b])
-        tst_hlt = np.sum(rho2/(1-rho2))
-        tst_pbt = np.sum(rho2)
-        tst_wlk = np.product(1-rho2)
-        tst_rlr = np.max(rho2/(1-rho2))
-        
-        eta_hlt = (tst_hlt/s) / (1 + tst_hlt/s)
-        eta_pbt = tst_pbt / s
-        eta_wlk = 1 - np.power(tst_wlk, (1/g))
-        eta_rlr = np.max(rho2)
-        
-        test_stats = np.vstack([tst_hlt, tst_pbt, tst_wlk,]).T
-        effect_sizes = np.vstack([eta_hlt, eta_pbt, eta_wlk]).T
-        test_stats = pd.DataFrame(test_stats, columns=['HLT', 'PBT', 'WLK'])
-        effect_sizes = pd.DataFrame(effect_sizes, columns=['HLT', 'PBT', 'WLK'])
-        
-        df_hlt1 = a * b
-        df_wlk1 = a * b
-        df_rlr1 = np.max([a, b])
 
-        df_pbt1 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
-        df_pbt1 /= (dfe * (dfe + a - b))
-        df_pbt1 -= 2
-        df_pbt1 *= (a * b) / (s * (dfe + a))
-
-        df_hlt2 = (dfe**2 - dfe * (2 * b + 3) + b * (b + 3)) * (a * b + 2)
-        df_hlt2 /= (dfe * (a + b + 1) - (a + 2 * b + b2 - 1))
-        df_hlt2 += 4
-
-        df_pbt2 = s * (dfe + s - b) * (dfe + a + 2) * (dfe + a - 1)
-        df_pbt2 /= dfe * (dfe + a - b)
-        df_pbt2 -= 2
-        df_pbt2 *= (dfe + s - b) / (dfe + a)
-
-        df_wlk2 = g * (dfe - (b - a + 1) / 2) - (a * b - 2) / 2
-        df_rlr2 = dfe - np.max([a, b]) + b
-        df1 = np.array([df_hlt1, df_pbt1, df_wlk1])
-        df2 = np.array([df_hlt2, df_pbt2, df_wlk2])
-        f_values = (effect_sizes / df1) / ((1 - effect_sizes) / df2)
-        p_values = sp.stats.f.sf(f_values, df1, df2)
-        p_values = pd.DataFrame(p_values, columns=effect_sizes.columns)
-        df1 = pd.DataFrame(df1, index=effect_sizes.columns).T
-        df2 = pd.DataFrame(df2, index=effect_sizes.columns).T
-        f_rlr = tst_rlr * (df_rlr2 / df_rlr1)
-        p_rlr = sp.stats.f.sf(f_rlr, df_rlr1, df_rlr2)
-        rlr = pd.DataFrame([tst_rlr, eta_rlr, f_rlr, df_rlr1, df_rlr2, p_rlr])
-        rlr.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
-        rlr.columns = ['RLR']
-        rlr = rlr.T
-        sumstats = pd.concat([test_stats, effect_sizes, f_values, df1, df2, 
-                              p_values])
-        sumstats.index = ['Test Stat', 'Eta', 'F-values', 'df1', 'df2', 'P-values']
-        sumstats = sumstats.T
-        sumstats = pd.concat([sumstats, rlr])
+        eigvals, _ = np.linalg.eig(Sh.dot(np.linalg.inv(Sh+Se/dfe)))
+        sumstats, effect_sizes, rho2 =\
+            statfunc_utils.multivariate_association_tests(eigvals, 
+                                                      a, b, dfe)
         return sumstats, effect_sizes, rho2
     
     def parameter_inference(self):

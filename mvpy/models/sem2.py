@@ -118,7 +118,8 @@ class ObjFuncML:
         
 
 
-
+# TODO: Add formula parser, so that dependent vars have free params in TH
+#       and independent vars have free covariance in PH 
 
 class SEM:
     """
@@ -200,10 +201,10 @@ class SEM:
         LA_idx = pd.DataFrame(LA_idx, index=LA.index, columns=LA.columns)
         labels = []
         if (type(LA_idx) is pd.DataFrame)|(type(LA_idx) is pd.Series):
-            for x in LA_idx[LA_idx==True].stack().index.values:
+            for x in LA_idx[LA_idx==True].T.stack().index.values:
                 labels.append("%s ~ %s"%(x[1], x[0]))
         if (type(BE) is pd.DataFrame)|(type(BE) is pd.Series):
-            for x in BE[BE==True].stack().index.values:
+            for x in BE[BE==True].T.stack().index.values:
                 labels.append("%s ~ %s"%(x[1], x[0]))   
         if PH is None:
             PH = np.eye(BE.shape[0])
