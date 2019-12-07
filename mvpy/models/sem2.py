@@ -121,8 +121,7 @@ class ObjFuncML:
 # TODO: Add formula parser, so that dependent vars have free params in TH
 #       and independent vars have free covariance in PH 
 
-
-def parse_formula(mod, columns):
+def parse_formula(mod, columns, rcorr=None):
     eqs = [x.strip() for x in mod.split('\n') if len(x.strip())>0]
     measurement_model = [x for x in eqs if x.find("=")!=-1]
     structural_model = [x for x in eqs if x.find("~")!=-1]
@@ -202,7 +201,19 @@ def parse_formula(mod, columns):
     
     for x in exog:
         Psi.loc[x, x] = 0
+    
+    if rcorr is not None:
+        rc = [x.strip() for x in rcorr.split('\n') if len(x.strip())>0]
+        for rci in rc:
+            lhs, rhs = rci.split('~~')
+            lhs = lhs.strip()
+            rhs = rhs.split('+')
+            rhs = [x.strip() for x in rhs]
+            for r in rhs:
+                Psi.loc[lhs, r] = 0.05
+                Psi.loc[r, lhs] = 0.05
     return Lambda, Beta, Phi, Psi
+
 
 
 
