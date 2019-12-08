@@ -16,8 +16,8 @@ from numpy import exp, ones, dot, diag
 from ..utils import linalg_utils, base_utils, statfunc_utils
 
 
-
-             
+     
+        
 class MinimalCLM:
     
     def __init__(self, X, Y):
@@ -31,6 +31,10 @@ class MinimalCLM:
                 ['type', 'fun'], 
                 ['ineq', lambda params: params[i+1]-params[i]])) 
                 for i in range(self.n_cats-2)]
+        self.A1, self.A2 = self.Y[:, :-1], self.Y[:, 1:]
+        self.o1, self.o2 = self.Y[:, -1]*10e1, self.Y[:, 0]*-10e5
+        self.B1, self.B2 = np.block([self.A1, -self.X]), np.block([self.A2, -self.X])
+        
 
     def inv_logit(self, x):
         y = exp(x) / (1.0 + exp(x))
@@ -46,28 +50,24 @@ class MinimalCLM:
     
     
     def loglike(self, params):
-        X, Y, W = self.X, self.Y, self.W
+        W = self.W
         params = linalg_utils._check_1d(params)
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         Pi = Gamma_1 - Gamma_2
         LL = np.sum(W * np.log(Pi))
         return -LL
     
     def gradient(self, params):
-        X, Y, W = self.X, self.Y, self.W
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        W = self.W
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Phi_11, Phi_12 = self.dlogit(Nu_1), self.dlogit(Nu_2)
         #Phi_11[Y[:, 0].astype(bool)], Phi_12[Y[:, -1].astype(bool)] = 1.0, 0.0
-        Phi_11, Phi_12 = diag(Phi_11), diag(Phi_12)
-        dPi = dot(B1.T, Phi_11) - dot(B2.T, Phi_12)
-        
+        dPi = (B1 * Phi_11[:, None]).T - (B2*Phi_12[:, None]).T
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         #Gamma_1[Y[:, 0].astype(bool)] = 1.0
         #Gamma_2[Y[:, -1].astype(bool)] = 0.0
@@ -76,28 +76,33 @@ class MinimalCLM:
         g = -dot(dPi, W / Pi)
         return g
     
+    
     def hessian(self, params):
-        X, Y, W = self.X, self.Y, self.W
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        W = self.W
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Phi_21, Phi_22 = self.d2logit(Nu_1),  self.d2logit(Nu_2)
         #Phi_21[Y[:, 0].astype(bool)], Phi_22[Y[:, -1].astype(bool)] = 1.0, 0.0
     
         Phi_11, Phi_12 = self.dlogit(Nu_1), self.dlogit(Nu_2)
         #Phi_11[Y[:, 0].astype(bool)], Phi_12[Y[:, -1].astype(bool)] = 1.0, 0.0
-        Phi_11, Phi_12 = diag(Phi_11), diag(Phi_12)    
-        Phi_21, Phi_22 = diag(Phi_21), diag(Phi_22)
+        Phi_11 = linalg_utils._check_2d(Phi_11)
+        Phi_12 = linalg_utils._check_2d(Phi_12)
+        Phi_21 = linalg_utils._check_2d(Phi_21)
+        Phi_22 = linalg_utils._check_2d(Phi_22)
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         #Gamma_1[Y[:, 0].astype(bool)] = 1.0
         #Gamma_2[Y[:, -1].astype(bool)] = 0.0
         Pi = Gamma_1 - Gamma_2
-        Phi3 = diag(W / Pi**2)
-        dPi = dot(B1.T, Phi_11) - dot(B2.T, Phi_12)
-        H=linalg_utils.mdot([B1.T, Phi_21, B1])-linalg_utils.mdot([B2.T,
-                           Phi_22, B2])-linalg_utils.mdot([dPi, Phi3, dPi.T])
+        Phi3 =linalg_utils._check_2d(W / Pi**2)
+        dPi = (B1 * Phi_11).T - (B2*Phi_12).T
+        T0 = (B1 * Phi_21).T.dot(B1)
+        T1 = (B2 * Phi_22).T.dot(B2)
+        T2 = dPi.dot(dPi.T*Phi3)
+        H=T0-T1-T2
         return -H
+    
     
     def fit(self, optimizer_kwargs=None):
         if optimizer_kwargs is None:
@@ -137,6 +142,10 @@ class CLM:
                 ['type', 'fun'], 
                 ['ineq', lambda params: params[i+1]-params[i]])) 
                 for i in range(self.n_cats-2)]
+        self.A1, self.A2 = self.Y[:, :-1], self.Y[:, 1:]
+        self.o1, self.o2 = self.Y[:, -1]*10e1, self.Y[:, 0]*-10e5
+        self.B1, self.B2 = np.block([self.A1, -self.X]), np.block([self.A2, -self.X])
+        
 
     def inv_logit(self, x):
         y = exp(x) / (1.0 + exp(x))
@@ -152,28 +161,24 @@ class CLM:
     
     
     def loglike(self, params):
-        X, Y, W = self.X, self.Y, self.W
+        W = self.W
         params = linalg_utils._check_1d(params)
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         Pi = Gamma_1 - Gamma_2
         LL = np.sum(W * np.log(Pi))
         return -LL
     
     def gradient(self, params):
-        X, Y, W = self.X, self.Y, self.W
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        W = self.W
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Phi_11, Phi_12 = self.dlogit(Nu_1), self.dlogit(Nu_2)
         #Phi_11[Y[:, 0].astype(bool)], Phi_12[Y[:, -1].astype(bool)] = 1.0, 0.0
-        Phi_11, Phi_12 = diag(Phi_11), diag(Phi_12)
-        dPi = dot(B1.T, Phi_11) - dot(B2.T, Phi_12)
-        
+        dPi = (B1 * Phi_11[:, None]).T - (B2*Phi_12[:, None]).T
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         #Gamma_1[Y[:, 0].astype(bool)] = 1.0
         #Gamma_2[Y[:, -1].astype(bool)] = 0.0
@@ -183,26 +188,29 @@ class CLM:
         return g
     
     def hessian(self, params):
-        X, Y, W = self.X, self.Y, self.W
-        A1, A2 = Y[:, :-1], Y[:, 1:]
-        B1, B2 = np.block([A1, -X]), np.block([A2, -X])
-        o1, o2 = Y[:, -1]*10e1, Y[:, 0]*-10e5
-        Nu_1, Nu_2 = dot(B1, params)+o1, dot(B2, params)+o2
+        W = self.W
+        o1, o2 = self.o1, self.o2
+        B1, B2 = self.B1, self.B2
+        Nu_1, Nu_2 = B1.dot(params)+o1, B2.dot(params)+o2
         Phi_21, Phi_22 = self.d2logit(Nu_1),  self.d2logit(Nu_2)
         #Phi_21[Y[:, 0].astype(bool)], Phi_22[Y[:, -1].astype(bool)] = 1.0, 0.0
     
         Phi_11, Phi_12 = self.dlogit(Nu_1), self.dlogit(Nu_2)
         #Phi_11[Y[:, 0].astype(bool)], Phi_12[Y[:, -1].astype(bool)] = 1.0, 0.0
-        Phi_11, Phi_12 = diag(Phi_11), diag(Phi_12)    
-        Phi_21, Phi_22 = diag(Phi_21), diag(Phi_22)
+        Phi_11 = linalg_utils._check_2d(Phi_11)
+        Phi_12 = linalg_utils._check_2d(Phi_12)
+        Phi_21 = linalg_utils._check_2d(Phi_21)
+        Phi_22 = linalg_utils._check_2d(Phi_22)
         Gamma_1, Gamma_2 = self.inv_logit(Nu_1), self.inv_logit(Nu_2)
         #Gamma_1[Y[:, 0].astype(bool)] = 1.0
         #Gamma_2[Y[:, -1].astype(bool)] = 0.0
         Pi = Gamma_1 - Gamma_2
-        Phi3 = diag(W / Pi**2)
-        dPi = dot(B1.T, Phi_11) - dot(B2.T, Phi_12)
-        H=linalg_utils.mdot([B1.T, Phi_21, B1])-linalg_utils.mdot([B2.T,
-                           Phi_22, B2])-linalg_utils.mdot([dPi, Phi3, dPi.T])
+        Phi3 =linalg_utils._check_2d(W / Pi**2)
+        dPi = (B1 * Phi_11).T - (B2*Phi_12).T
+        T0 = (B1 * Phi_21).T.dot(B1)
+        T1 = (B2 * Phi_22).T.dot(B2)
+        T2 = dPi.dot(dPi.T*Phi3)
+        H=T0-T1-T2
         return -H
     
     def fit(self, optimizer_kwargs=None):
@@ -214,7 +222,7 @@ class CLM:
         intercept_model.fit()
         self.intercept_model = intercept_model
         theta = statfunc_utils.norm_qtf(np.sum(self.Y, axis=0).cumsum()[:-1]/np.sum(self.Y))
-        beta = ones(self.X.shape[1])*0 #vulnerable to (under)overflow
+        beta = ones(self.X.shape[1])*0
         params = np.concatenate([theta, beta], axis=0)
         self.theta_init = theta
         self.params_init = params
@@ -269,4 +277,9 @@ class CLM:
                              np.array([1e6])])
         yhat = pd.cut(yhat, th).codes.astype(float)
         return yhat
-        
+    
+    
+    
+    
+    
+    
