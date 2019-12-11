@@ -128,7 +128,7 @@ class GLM:
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
         Vinv =1.0/V
-        W = Vinv * self.f.dinv_link(eta)
+        W = Vinv * self.f.dinv_link(eta) * self.f.weights
         G = -(linalg_utils._check_1d(Y) - mu) / phi * W
         g = X.T.dot(G)
         return g
@@ -148,7 +148,7 @@ class GLM:
         
         Psc = (linalg_utils._check_1d(Y)-mu) * (W2*W0+W1*Vinv)
         Psb = Vinv*W0
-        W = Psc - Psb
+        W = (Psc - Psb)*self.f.weights
         
         H = (X.T * W).dot(X) / phi
         return -H
@@ -180,7 +180,11 @@ class GLM:
                                            self.tvals, self.pvals]).T, 
                                            index=self.xcols, 
                                            columns=['beta', 'SE', 't', 'p'])
+
         self.LLA = self.loglike(self.beta)
+        if  self.f.dist == 'poisson':
+            self.LLA = -self.LLA
+            self.LL0 = -self.LL0
         self.LLR = 2.0*(self.LL0-self.LLA)
     
         self.sst = np.var(self.Y)*self.Y.shape[0]
@@ -191,9 +195,13 @@ class GLM:
        
         self.ssr =np.sum((yhat - yhat.mean())**2)
         pt = y.mean()
-        rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
-        rmax_an = -2*(pt*np.log(pt) + (1-pt)*np.log(1-pt))
-        rmax_an = rmax_an / (1 + rmax_an)
+        if self.f.dist in ['binomial', 'bernoulli']:
+            rmax =  (1 - np.exp(-2.0/n * (self.LL0)))
+            rmax_an = -2*(pt*np.log(pt) + (1-pt)*np.log(1-pt))
+            rmax_an = rmax_an / (1 + rmax_an)
+        else:
+            rmax = 2*self.LL0/(self.n_obs+2*self.LL0)
+            rmax_an = rmax
      
         mu_p = yhat.mean()
         pseudo_r2 = {}
@@ -215,7 +223,6 @@ class GLM:
         self.scale_chi2 = self.pearson_chi2 / (n-p)
         self.scale_dev = self.deviance.sum() / (n - p)
         self.pearson_resid = (y - yhat)*np.sqrt(1/self.var_mu)
-        self.deviance_resid = np.sign(y - yhat) * np.sqrt(self.deviance)
         self.AIC = 2*self.LLA + 2*p
         self.AICC = 2*self.LLA + 2*p*n/(n-p-1)
         self.BIC = 2*self.LLA + p*np.log(n)
@@ -247,6 +254,7 @@ class Bernoulli:
         else:
             self.link = link
             self.type_='noncanonical'
+        self.weights = 1.0
     def canonical_parameter(self, mu):
         u = mu / (1  - mu)
         T = np.log(u)
@@ -301,6 +309,8 @@ class Binomial:
     def __init__(self, weights=None, link='canonical'):
         if weights is None:
             self.weights = np.ones(1)
+        else:
+            self.weights = weights
         self.dist = 'binomial'
         if link == 'canonical':
             self.link=LogitLink()
@@ -310,7 +320,7 @@ class Binomial:
             self.type_='noncanonical'
             
     def canonical_parameter(self, mu):
-        u = mu / (self.weights  - mu)
+        u = mu / (1.0  - mu)
         T = np.log(u)
         return T
     
@@ -339,7 +349,7 @@ class Binomial:
         return V
                 
     def d2canonical(self, mu):
-        res = 1.0/((1.0 - mu)**2)-1.0/(mu**2)
+        res = 1.0/((1 - mu)**2)-1.0/(mu**2)
         return res
     
     def unpack_params(self, params):
@@ -370,6 +380,7 @@ class Poisson:
         else:
             self.link = link
             self.type_='noncanonical'
+        self.weights = 1.0
     def canonical_parameter(self, mu):
         T = np.log(mu)
         return T
@@ -408,9 +419,9 @@ class Poisson:
         y = linalg_utils._check_1d(Y)
         mu = self.inv_link(X.dot(params))
         d = np.zeros(y.shape[0])
-        ixa = (y/mu)>0
-        d[ixa] = y*np.log(y[ixa]/mu[ixa]) 
-        d[~ixa]= (y[~ixa]-mu[~ixa])
+        ix = (y==0)
+        d[~ix] = (y[~ix]*np.log(y[~ix]/mu[~ix]) - (y[~ix] - mu[~ix]))
+        d[ix]= mu[ix]
         return 2*d
     
 
@@ -424,6 +435,7 @@ class Gamma:
         else:
             self.link = link
             self.type_='noncanonical'
+        self.weights = 1.0
     def canonical_parameter(self, mu):
         T = 1.0 / mu
         return T
@@ -481,6 +493,7 @@ class Normal:
         else:
             self.link = link
             self.type_='noncanonical'
+        self.weights = 1.0
     def canonical_parameter(self, mu):
         T = mu
         return T
