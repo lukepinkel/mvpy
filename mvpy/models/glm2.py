@@ -360,12 +360,15 @@ class Binomial:
     def deviance(self, params, X, Y):
         y = linalg_utils. _check_1d(Y)
         mu = self.inv_link(X.dot(params))
-        lna, lnb = np.zeros(y.shape[0]), np.zeros(y.shape[0])
-        ixa, ixb = (y/mu)>0, ((1-y)/(1-mu))>0
-        lna[ixa] = np.log(y[ixa]/mu[ixa]) 
-        lnb[ixb] = np.log((1-y[ixb])/(1-mu[ixb]))
-        d = y*lna+(1-y)*lnb
-        return 2*d
+        d = np.zeros(y.shape[0])
+        ixa = y==0
+        ixb = y==1.0
+        ixc = ~(ixa | ixb)
+        ycj = 1-y[ixc]
+        d[ixc] = y[ixc]*np.log(y[ixc]/mu[ixc])+ycj*np.log(ycj/(1-mu[ixc]))
+        d[ixa] = -np.log(1-mu[ixa])
+        d[ixb] = -np.log(mu[ixb])
+        return 2*self.weights*d
     
 
         
