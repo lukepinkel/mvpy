@@ -99,7 +99,7 @@ def commutation_matrix(p, q):
     '''
     K = np.eye(p * q)
     #indices = np.arange(p * q).reshape((p, q), order='F')
-    ix = np.arange(p * q).reshape((p, q), order='C').reshape(p*q, order='F')
+    ix = np.arange(p * q).reshape((p, q), order='F').reshape(p*q, order='C')
     return K.take(ix, axis=0)
 
 def duplication_matrix(n):
@@ -339,13 +339,13 @@ def kronvec_mat(A_dims, B_dims, sparse=False):
   B_dims: list or tuple
     dimensions of B
   '''
-  n, q = A_dims
-  p, r = B_dims
+  n, p = A_dims
+  q, r = B_dims
   if sparse is False:
-    Kv = kron(kron(eye(q), kmat(r, n)), eye(p))
+    Kv = kron(kron(eye(p), kmat(r, n)), eye(q))
   else:
-    Kv = sps.kron(sps.eye(q), sparse_kmat(r, n))
-    Kv = sps.kron(Kv, sps.eye(p))
+    Kv = sps.kron(sps.eye(p), sparse_kmat(r, n))
+    Kv = sps.kron(Kv, sps.eye(q))
   return Kv
 
 def einv(A):

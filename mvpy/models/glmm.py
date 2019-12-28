@@ -294,7 +294,8 @@ class WLMM(object):
         LL = logdetR+logdetC + logdetG + yPy
         return LL
 
-    def fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False):
+    def fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False,
+            compute_hessian=True):
         if hess_opt is False:
             res = sp.optimize.minimize(self.loglike, self.theta,
                                        bounds=self.bounds,
@@ -430,8 +431,15 @@ class WLMM(object):
     
 class GLMM(WLMM):
     '''
-    Currently an extremely ineffecient implementation of a GLMM, mostly to
-    see if it worked.
+    Currently an ineffecient implementation of a GLMM, mostly done 
+    for fun.  A variety of implementations for GLMMs have been proposed in the
+    literature, and a variety of names have been used to refer to each model;
+    the implementation here is based of off linearization using a taylor
+    approximation of the error (assumed to be gaussian) around the current
+    estimates of fixed and random effects.  This type of approach may be 
+    referred to as penalized quasi-likelihood, or pseudo-likelihood, and 
+    may be abbreviated PQL, REPL, RPL, or RQL.
+
     '''
     def __init__(self, fixed_effects, random_effects, yvar, data, fam,
                  error_structure=None, acov=None):
@@ -446,16 +454,18 @@ class GLMM(WLMM):
         self.mod.fit()
         self.y = self.mod.y
         
-    def fit(self, n_iters=200, tol=1e-3):
+    def fit(self, n_iters=200, tol=1e-3, verbose=True):
         
         mod = self.mod
         theta = mod.params
         y = self.y
+        fit_hist = []
+        bounds = mod.bounds[:-1]+[(1, 1)] #fix error covariance to 1
         for i in range(n_iters):
             eta = mod.predict()
             
             mu = self.f.inv_link(eta)
-            v = self.f.var_func(self.f.canonical_parameter(mu))
+            v = self.f.var_func(T=self.f.canonical_parameter(mu))
             gp = self.f.link.dlink(mu)
             nu = eta + gp*(y - mu)
             v = linalg_utils._check_1d(v)
@@ -465,13 +475,18 @@ class GLMM(WLMM):
             
             mod = WLMM(self.fe, self.re, self.yvar, self.data, W=W)
             mod.y = nu
+            mod.bounds = bounds
             mod.fit()
             tvar = (np.linalg.norm(theta)+np.linalg.norm(mod.params))
             eps = np.linalg.norm(theta - mod.params) / tvar
+            fit_hist.append(eps)
+            if verbose:
+                print(eps)
             if eps < tol:
                 break
             theta = mod.params
         self.mod = mod
+        self.fit_hist = fit_hist
         res = self.mod.optimizer
         self.params = res.x
         G, Ginv, SigA, R, Rinv, SigE = self.mod.params2mats(res.x)

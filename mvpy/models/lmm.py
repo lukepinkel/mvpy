@@ -71,7 +71,7 @@ class LMM(object):
             n_vars = 1
             yvnames = [yvar]
          
-        res_names = [] #might be better of renamed re_names; may be typo
+        res_names = [] #might be better off renamed re_names; may be typo
         for key in random_effects.keys():
             #dummy encode the groupings and get random effect variate
             Ji = data_utils.dummy_encode(data[key], complete=True)
@@ -163,11 +163,11 @@ class LMM(object):
         for key in var_struct.keys():
             Sv_shape, Av = var_struct[key]
             Av_shape = Av.shape
-            Kv = linalg_utils.kronvec_mat(Sv_shape, Av_shape, sparse=True)
+            Kv = linalg_utils.kronvec_mat(Av_shape, Sv_shape, sparse=True)
             Ip = sps.csc_matrix(sps.eye(np.product(Sv_shape)))
             vecAv = sps.csc_matrix(linalg_utils.vecc(Av))
 
-            D = sps.csc_matrix(Kv.dot(sps.kron(Ip, vecAv)))
+            D = sps.csc_matrix(Kv.dot(sps.kron(vecAv, Ip)))
             if key != 'error':
                 D = sps.csc_matrix(ZoZ[key].dot(D))
             tmp = sps.csc_matrix(linalg_utils.dmat(int(np.sqrt(D.shape[1]))))
@@ -214,8 +214,8 @@ class LMM(object):
             a, b = int(partitions[i]), int(partitions[i+1])
             Vi = linalg_utils.invech(theta[a:b])
             Ai = re_struct[key]['acov']
-            Glist.append(np.kron(Vi, Ai))
-            Ginvlist.append(np.kron(np.linalg.pinv(Vi), Ai))
+            Glist.append(np.kron(Ai, Vi))
+            Ginvlist.append(np.kron(Ai, np.linalg.pinv(Vi)))
             SigA.append(Vi)
         p1, p2 = int(partitions[-2]), int(partitions[-1])
         Verr = linalg_utils.invech(theta[p1:p2])
