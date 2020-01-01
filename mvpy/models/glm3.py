@@ -75,6 +75,16 @@ class GLM:
         s/= self.dfe
         return s
     
+    def predict(self, params):
+        if self.scale_handling == 'NR':
+            beta, _ = params[:-1], params[-1]
+            eta = self.X.dot(beta)
+            mu = self.f.inv_link(eta)
+        else:
+            eta = self.X.dot(params)
+            mu = self.f.inv_link(eta)
+        return mu
+    
     def loglike(self, params):
         params = linalg_utils._check_1d(params)
         if self.scale_handling == 'NR':
@@ -169,6 +179,24 @@ class GLM:
             sh = 1.0
         return theta, fit_hist
             
+    def fit(self, method='sp'):
+        if method == 'sp':
+            res = self._fit_optim()
+            params = res.x
+        else:
+            params, res = self._fit_manual()
+        self.optimizer = res
+        self.params = params
+        mu = self.predict(params)
+        y, mu = self.f.cshape(self.Y, mu)
+        presid = (y - mu) / np.sqrt(self.f.var_func(mu=mu))
+        self.pearson_resid = presid
+        if self.scale_handling == 'NR':
+            beta, _ = params[:-1], params[-1]
+        else:
+            beta = params
+        self.beta = beta
+        
     
 class Link(object):
     def inv_link(self, eta):
