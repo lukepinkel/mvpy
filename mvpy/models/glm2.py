@@ -18,6 +18,7 @@ from ..utils import linalg_utils
 
 
 
+
 class GLM:
     
     def __init__(self, frm=None, data=None, fam=None):
@@ -44,8 +45,8 @@ class GLM:
         self.jn = np.ones((self.n_obs, 1))
         self.YtX = self.Y.T.dot(self.X)
         self.theta_init = np.ones(self.n_feats)/self.n_feats
-        if self.f.dist == 'normal':
-            self.theta_init *= 1e-10
+        if self.f.dist in ['normal', 'gamma']:
+            self.theta_init *= 1e-6
         
         
     def loglike(self, params, X=None, Y=None, jn=None):
@@ -58,10 +59,14 @@ class GLM:
             jn = self.jn
         eta = X.dot(beta)
         mu = self.f.inv_link(eta)
+        if self.f.spar == 'profiled':
+            phi = self.f.est_scale(Y, df=self.dfe, mu=mu)
+            
         T = self.f.canonical_parameter(mu)
         Z = self.f.cumulant(T)
         Ym = linalg_utils._check_1d(Y)*self.f.weights
         LL = ((Ym).T.dot(T) - jn.T.dot(Z)) / phi
+        LL+= self.f.cfunc(Y, phi)
         return -linalg_utils._check_0d(LL)
     
     def gradient(self, params, X=None, Y=None, jn=None):
@@ -74,6 +79,8 @@ class GLM:
         beta, phi = self.f.unpack_params(params)
         eta = X.dot(beta)
         mu = self.f.inv_link(eta)
+        if self.f.spar == 'profiled':
+            phi = self.f.est_scale(Y, df=self.dfe, mu=mu)
         T = self.f.canonical_parameter(mu)
         V = self.f.var_func(T)
         Vinv =1.0/V
@@ -93,8 +100,10 @@ class GLM:
 
         eta = X.dot(beta)
         mu = self.f.inv_link(eta)
+        if self.f.spar == 'profiled':
+            phi = self.f.est_scale(Y, df=self.dfe, mu=mu)
         T = self.f.canonical_parameter(mu)
-        V = self.f.var_func(T)*phi
+        V = self.f.var_func(T)
         Vinv = 1.0/V
         W0 = self.f.dinv_link(eta)**2
         W1 = self.f.d2inv_link(eta)
@@ -104,7 +113,7 @@ class GLM:
         Psc = (linalg_utils._check_1d(Y)-mu) * (W2*W0+W1*Vinv)
         Psb = Vinv*W0
         W = (Psc - Psb)*self.f.weights
-        
+        W = W/phi
         H = (X.T * W).dot(X) 
         return -H
     
@@ -115,6 +124,24 @@ class GLM:
                                          hess=self.hessian, **optimizer_kwargs) 
         return optimizer
         
+    def _fit_manual(self, theta=None, X=None, Y=None, jn=None):
+        if X is None:
+            X = self.X
+        if Y is None:
+            Y = self.Y
+        if jn is None:
+            jn = self.jn
+        if theta is None:
+            theta = self.theta_init
+    
+        for i in range(50): 
+            H = self.hessian(theta, X, Y, jn)
+            g =  self.gradient(theta, X, Y, jn)
+            if np.linalg.norm(g)/len(g)<1e-9:
+                 break
+            dx = np.atleast_1d(np.linalg.solve(H, g))
+            theta -= dx
+        return theta
         
         
     def fit(self, theta=None, optimizer_kwargs=None):
@@ -127,15 +154,24 @@ class GLM:
                 if x not in optimizer_kwargs.keys():
                     optimizer_kwargs[x] = y
         X0 = np.ones((self.n_obs, 1))
-        t0 = np.array([0])
-        intmod = sp.optimize.minimize(self.loglike, t0, args=(X0, self.Y, self.jn),
+        t0 = np.array([1e-9])
+        
+            
+        if self.f.dist != 'gamma':
+            optimizer = self._fit(optimizer_kwargs, theta)      
+            self.optimizer = optimizer
+            self.beta = optimizer.x
+            intmod = sp.optimize.minimize(self.loglike, t0, args=(X0, self.Y, self.jn),
                                    jac=self.gradient, hess=self.hessian,
                                    **optimizer_kwargs)
-        self.intercept_model = intmod
-        self.LL0 = self.loglike(intmod.x, X0, self.Y, self.jn)
-        optimizer = self._fit(optimizer_kwargs, theta)      
-        self.optimizer = optimizer
-        self.beta = optimizer.x
+            self.intercept_model = intmod
+            self.LL0 = self.loglike(intmod.x, X0, self.Y, self.jn)
+        else:
+            intmod = self._fit_manual(t0, X0)
+            self.intercept_model = intmod
+            self.beta = self._fit_manual()
+            self.LL0 = self.loglike(intmod, X0, self.Y, self.jn)
+            
         self.sse = np.sum((self.Y[:, 0]-self.predict())**2)
         if self.f.dist == 'normal':
             self.f.phi = self.sse / (self.n_obs - self.X.shape[1])
@@ -188,7 +224,7 @@ class GLM:
         self.pseudo_r2 = pseudo_r2
         self.LLRp =  sp.stats.chi2.sf(self.LLR, len(self.beta))
         self.pearson_chi2 = self.sse / self.var_mu
-        self.deviance = self.f.deviance(self.optimizer.x, self.X, self.Y)
+        self.deviance = self.f.deviance(self.beta, self.X, self.Y)
         self.scale_chi2 = self.pearson_chi2 / (n-p)
         self.scale_dev = self.deviance.sum() / (n - p)
         self.pearson_resid = (y - yhat)*np.sqrt(1/self.var_mu)
@@ -230,14 +266,14 @@ class Family(object):
         r_s = np.sign(y - mu) * np.sqrt(d)
         return r_s
     
-    def scale(self, Y, df=None, X=None, params=None, mu=None):
+    def est_scale(self, Y, df=None, X=None, params=None, mu=None):
         if df is None:
             df = X.shape[0] - X.shape[1]
         if mu is None:
             mu = self.inv_link(X.dot(params))
         mu = linalg_utils. _check_1d(mu)
         y = linalg_utils. _check_1d(Y)
-        V = self.var_func(mu)
+        V = self.var_func(self.canonical_parameter(mu))
         phi = np.sum((y - mu)**2 / V) / df
         return phi
         
@@ -258,6 +294,7 @@ class Bernoulli(Family):
             self.link = link
             self.type_='noncanonical'
         self.weights = 1.0
+        self.spar = 'fixed'
         
     def canonical_parameter(self, mu):
         u = mu / (1  - mu)
@@ -309,6 +346,9 @@ class Bernoulli(Family):
         d = y*lna+(1-y)*lnb
         return 2*d
     
+    def cfunc(self, Y, phi):
+        return 0
+    
 
 class Binomial(Family):
     
@@ -325,6 +365,7 @@ class Binomial(Family):
         else:
             self.link = link
             self.type_='noncanonical'
+        self.spar = 'fixed'
             
     def canonical_parameter(self, mu):
         u = mu / (1  - mu)
@@ -378,6 +419,9 @@ class Binomial(Family):
         d[ixb] = -np.log(mu[ixb])
         return 2*self.weights*d
     
+    def cfunc(self, Y, phi):
+        return 0
+    
 
         
 
@@ -393,6 +437,8 @@ class Poisson(Family):
             self.link = link
             self.type_='noncanonical'
         self.weights = 1.0
+        self.spar = 'fixed'
+        
     def canonical_parameter(self, mu):
         T = np.log(mu)
         return T
@@ -436,6 +482,9 @@ class Poisson(Family):
         d[ix]= mu[ix]
         return 2*d
     
+    def cfunc(self, Y, phi):
+        return 0
+    
         
     
 
@@ -451,6 +500,7 @@ class Gamma(Family):
             self.link = link
             self.type_='noncanonical'
         self.weights = 1.0
+        self.spar = 'profiled'
         
     def canonical_parameter(self, mu):
         T = -1.0 / mu
@@ -479,7 +529,7 @@ class Gamma(Family):
         return V
                 
     def d2canonical(self, mu):
-        res = 2 /(mu**3)
+        res = -2 /(mu**3)
         return res
     
     def unpack_params(self, params):
@@ -496,6 +546,10 @@ class Gamma(Family):
         lb[ixb] = (y - mu) / mu
         d = lb - lna
         return 2*d
+    def cfunc(self, Y, phi):
+        v = 1/phi
+        y = linalg_utils._check_1d(Y)
+        return np.sum(v*np.log(v*y)-np.log(y)-sp.special.gammaln(v))
 
 
 class Normal(Family):
@@ -511,6 +565,8 @@ class Normal(Family):
             self.link = link
             self.type_='noncanonical'
         self.weights = 1.0
+        self.spar = 'profiled'
+        
     def canonical_parameter(self, mu):
         T = mu
         return T
@@ -550,7 +606,8 @@ class Normal(Family):
         mu = self.inv_link(X.dot(params))
         d = (y - mu)**2
         return 2*d
-
+    def cfunc(self, Y, phi):
+        return 0
 
 class IdentityLink:
 
@@ -751,6 +808,4 @@ class PowerLink:
     def dlink(self, mu):
         dmu = 1.0 / (self.dinv_link(self.link(mu)))
         return dmu
-    
-    
     

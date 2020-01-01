@@ -49,7 +49,7 @@ class LMM(object):
             via a string referencing a column name, which will then be used to
             constructthe error covariance.  Implemented for multivariate linear
             models, where it is repeated across the multiple dependent variables,
-            and has the structure Cov(Error) = V_{m\\times m}\\otimes I_{n}
+            and has the structure Cov(Error) =  I_{n} \\otimes R_{m\\times m}
         acov: dict, default None
             Similar to random_effects, dictionary with keys indicating factors
             except the values need to be matrices that specify the covariance
@@ -63,7 +63,7 @@ class LMM(object):
         Z = []
         re_struct = collections.OrderedDict()
         
-        #Determine if model is multivariate
+        # Determine if model is multivariate
         if type(yvar) is list: 
             n_vars = len(yvar)
             yvnames = yvar
@@ -71,23 +71,23 @@ class LMM(object):
             n_vars = 1
             yvnames = [yvar]
          
-        res_names = [] #might be better off renamed re_names; may be typo
+        res_names = [] # might be better off renamed re_names; may be typo
         for key in random_effects.keys():
-            #dummy encode the groupings and get random effect variate
+            # dummy encode the groupings and get random effect variate
             Ji = data_utils.dummy_encode(data[key], complete=True)
             Zij = patsy.dmatrix(random_effects[key], data=data,
                                 return_type='dataframe')
-            #stratify re variable by dummy columns
+            # stratify re variable by dummy columns
             Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T 
             Z.append(Zi)
             k = Zij.shape[1]*n_vars
             # RE dependence structure
             if (acov is not None):
-                if acov[key] is not None: #dependence structure for each RE
+                if acov[key] is not None: # dependence structure for each RE
                     acov_i = acov[key]
-                else:                     #single dependence for all REs
+                else:                     # single dependence for all REs
                     acov_i = np.eye(Ji.shape[1])
-            else:                         #IID
+            else:                         # IID
                 acov_i = np.eye(Ji.shape[1])
             re_struct[key] = {'n_units': Ji.shape[1],
                               'n_level_effects': Zij.shape[1],
@@ -127,8 +127,8 @@ class LMM(object):
         if type(yvar) is str:
             y = data[[yvar]]
         
-        #Vectorize equations - Add flexibility for dependent variable specific
-        #design matrices
+        # Vectorize equations - Add flexibility for dependent variable specific
+        # design matrices
         elif type(yvar) is list:
             y = linalg_utils.vecc(data[yvar].values)
             Z = np.kron(np.eye(n_vars), Z)
@@ -151,12 +151,13 @@ class LMM(object):
                                re_struct[key]['acov']]
         var_struct['error'] = [error_struct['vcov'].shape,
                                error_struct['acov']]
-        #Get Z and Z otimes Z for each RE
+        # Get Z and Z otimes Z for each RE
         Zs = collections.OrderedDict()
         ZoZ = collections.OrderedDict()
         for i in range(len(re_struct)):
             key = list(re_struct)[i]
             Zs[key] = sps.csc_matrix(Z[:, partitions2[i]:partitions2[i+1]])
+            # This can be time consuming for sufficiently dense Zs
             ZoZ[key] = sps.csc_matrix(sps.kron(Zs[key], Zs[key]))
 
         deriv_mats = collections.OrderedDict()
@@ -281,7 +282,7 @@ class LMM(object):
         logdetC = 2*np.sum(np.log(np.diag(L)[:-1]))
         yPy = L[-1, -1]**2
         logdetG = 0.0
-        #This needs to be fixed for the more general case
+        # This needs to be fixed for the more general case
         for key, Vi in list(zip(re_struct.keys(), SigA)):
             logdetG += re_struct[key]['n_units']*np.linalg.slogdet(Vi)[1]
         logdetR = error_struct['acov'].shape[0]*np.linalg.slogdet(SigE)[1]
@@ -351,6 +352,10 @@ class LMM(object):
                                                            'R2'])
         
     def predict(self, X=None, Z=None):
+        '''
+        Returns the predicted values using both fixed and random effect
+        estimates
+        '''
         if X is None:
             X = self.X
         if Z is None:
@@ -373,7 +378,7 @@ class LMM(object):
         Returns
         --------
         g: array
-          gradient vector of one dimensions (for compatibility with minimize)
+          gradient vector (1d for compatibility with scipy minimize)
 
         '''
         theta = linalg_utils._check_1d(theta)
@@ -398,6 +403,28 @@ class LMM(object):
         return linalg_utils._check_1d(g)
 
     def hessian(self, theta):
+        '''
+        The hessian of minus two times the restricted log likelihood.  This is
+        equal to
+
+        \\partial\\mathcal{L}=\partial V'(P\\otimes Pyy'P - P)\\partial V
+        
+        In scalar form this is
+        
+        H_{ij}=H_{ji}=2y'P(\\partial V_{i})P(\\partial V_{j})Py - 
+                      \tr{P(\\partial V_{i})P(\\partial V_{j})}
+
+        Parameters
+        ----------
+        theta: array
+          Vector of parameters
+
+        Returns
+        --------
+        H: array
+          Hessian matrix
+
+        '''
         theta = linalg_utils._check_1d(theta)
         G, Ginv, SigA, R, Rinv, SigE = self.params2mats(theta)
         jac_mats = self.jac_mats
