@@ -31,8 +31,12 @@ from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis#analysis:ignore
 from mvpy.models.lmm import LMM#analysis:ignore
 from mvpy.models.lvcorr import polychorr, polyserial, tetra, mixed_corr#analysis:ignore
 from mvpy.models.lm import LM, OLS, MassUnivariate, RLS, Huber, Bisquare#analysis:ignore
-from mvpy.models.glm2 import (GLM, Bernoulli, Poisson, Normal, LogitLink,#analysis:ignore
-                              ProbitLink, LogLink, ReciprocalLink)
+from mvpy.models.glm3 import (GLM, Binomial, Gamma, Gaussian, InverseGaussian, #analysis:ignore
+                               Poisson,#analysis:ignore
+                              CloglogLink, IdentityLink, LogComplementLink, #analysis:ignore
+                              LogitLink, LogLink, NegativeBinomialLink, PowerLink,#analysis:ignore
+                              ProbitLink, ReciprocalLink)#analysis:ignore
+from mvpy.models.glm3 import NegativeBinomial as NegBinom#analysis:ignore
 from mvpy.models.nb2 import NegativeBinomial#analysis:ignore
 from mvpy.models.glmm import GLMM#analysis:ignore
 

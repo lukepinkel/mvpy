@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Tue Dec 31 18:33:37 2019
+Created on Wed Jan  1 16:33:48 2020
 
 @author: lukepinkel
 """
+
 
 
 import numpy as np # analysis:ignore
@@ -15,8 +16,7 @@ import scipy.stats# analysis:ignore
 import scipy.special# analysis:ignore
 import patsy  # analysis:ignore
 import pandas as pd # analysis:ignore
-from .utils import linalg_utils, base_utils # analysis:ignore
-
+from mvpy.utils import linalg_utils, base_utils # analysis:ignore
 
 LN2PI = np.log(2.0 * np.pi)
 FOUR_SQRT2 = 4.0 * np.sqrt(2.0)
@@ -199,7 +199,8 @@ class GLM:
         y, mu = self.f.cshape(self.Y, mu)
         presid = (y - mu) / np.sqrt(self.f.var_func(mu=mu))
         self.pearson_resid = presid
-        
+        self.mu = mu
+        self.y = y
         if self.scale_handling == 'NR':
             beta, tau = params[:-1], params[-1]
             eta = self.X.dot(beta)
@@ -215,6 +216,7 @@ class GLM:
                 phi = 1.0
         
         self.beta = beta
+        self.phi = phi
         
         llf = self.f.full_loglike(y, mu=mu, scale=phi)
         lln = self.f.full_loglike(y, mu=np.ones(mu.shape[0])*y.mean(), 
@@ -241,8 +243,13 @@ class GLM:
             sumstats['PseudoR2_MCFA'] = 1 - (self.LLA - k) / self.LL0
             sumstats['PseudoR2_MFA'] = 1 - (LLR) / (LLR + N)
             
-        self.sumstats = pd.DataFrame(sumstats, index=['Fit']).T
+        self.sumstats = pd.DataFrame(sumstats, index=['Fit Statistic']).T
+
         self.vcov = np.linalg.pinv(self.hessian(self.params))
+        V = self.vcov
+        W = (self.X.T * self.f.gw(self.y, self.mu, phi=self.phi)).dot(self.X)
+        self.vcov_robust = V.dot(W).dot(V)
+        
         self.se_theta = np.diag(self.vcov)**0.5
         self.res = np.vstack([self.params, self.se_theta]).T
         self.res = pd.DataFrame(self.res, columns=['params', 'SE'])
@@ -652,7 +659,7 @@ class Gaussian(ExponentialFamily):
     
     def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
-        llf = ll + LN2PI*y.shape[0]
+        llf = ll + LN2PI
         return llf
     
     def canonical_parameter(self, mu):
@@ -725,7 +732,7 @@ class InverseGaussian(ExponentialFamily):
     
     def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
-        llf = ll + LN2PI*y.shape[0]
+        llf = ll + LN2PI
         return llf 
 
     
@@ -1093,4 +1100,13 @@ class Binomial(ExponentialFamily):
     
     
     
- 
+            
+        
+    
+    
+    
+    
+    
+    
+    
+
