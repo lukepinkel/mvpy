@@ -17,6 +17,7 @@ import patsy  # analysis:ignore
 import pandas as pd # analysis:ignore
 from .utils import linalg_utils, base_utils # analysis:ignore
 
+
 LN2PI = np.log(2.0 * np.pi)
 FOUR_SQRT2 = 4.0 * np.sqrt(2.0)
 
@@ -157,7 +158,7 @@ class GLM:
         if theta is None:
             theta = self.theta_init
     
-        fit_hist = {'|g|':[], 'theta':[], 'i':[]}
+        fit_hist = {'|g|':[], 'theta':[], 'i':[], 'll':[]}
         ll_k = self.loglike(theta)
         sh = 1.0
         for i in range(100): 
@@ -166,7 +167,8 @@ class GLM:
             gnorm = np.linalg.norm(g)
             fit_hist['|g|'].append(gnorm)
             fit_hist['i'].append(i)
-            fit_hist['theta'].append(theta)
+            fit_hist['theta'].append(theta.copy())
+            fit_hist['ll'].append(self.loglike(theta))
             if gnorm/len(g)<1e-9:
                  break
             dx = np.atleast_1d(np.linalg.solve(H, g))
@@ -179,7 +181,13 @@ class GLM:
             sh = 1.0
         return theta, fit_hist
             
-    def fit(self, method='sp'):
+    def fit(self, method=None):
+        self.theta0 = self.theta_init.copy()
+        if method is None:
+            if isinstance(self.f, Gamma):
+                method = 'mn'
+            else:
+                method = 'sp'
         if method == 'sp':
             res = self._fit_optim()
             params = res.x
@@ -191,11 +199,59 @@ class GLM:
         y, mu = self.f.cshape(self.Y, mu)
         presid = (y - mu) / np.sqrt(self.f.var_func(mu=mu))
         self.pearson_resid = presid
+        
         if self.scale_handling == 'NR':
-            beta, _ = params[:-1], params[-1]
+            beta, tau = params[:-1], params[-1]
+            eta = self.X.dot(beta)
+            mu = self.f.inv_link(eta)
+            phi = np.exp(tau)
         else:
             beta = params
+            eta = self.X.dot(beta)
+            mu = self.f.inv_link(eta)
+            if self.scale_handling == 'M':
+                phi = self._est_scale(self.Y, mu)
+            else:
+                phi = 1.0
+        
         self.beta = beta
+        
+        llf = self.f.full_loglike(y, mu=mu, scale=phi)
+        lln = self.f.full_loglike(y, mu=np.ones(mu.shape[0])*y.mean(), 
+                                  scale=phi)
+        self.LLA = llf*2.0
+        self.LL0 = lln*2.0
+        k = len(params)
+        N = self.X.shape[0]
+        sumstats = {}
+        sumstats['aic'] = 2*llf + k
+        sumstats['aicc'] = 2*llf + (2 * k * N) / (N - k - 1)
+        sumstats['bic'] = 2*llf + np.log(N)*k
+        sumstats['caic'] = 2*llf + k*(np.log(N) + 1.0)
+        sumstats['LLR'] = 2*(lln - llf)
+        sumstats['pearson_chi2'] = self._est_scale(self.Y, 
+                                    self.predict(self.params))*self.dfe
+        sumstats['deviance'] = self.f.deviance(y=self.Y, mu=mu, scale=phi).sum()
+        if isinstance(self.f, Binomial):
+            sumstats['PseudoR2_CS'] = 1-np.exp(1.0/N * (self.LLA - self.LL0))
+            rmax = 1-np.exp(1.0/N *(-self.LL0))
+            LLR = 2*(lln - llf)
+            sumstats['PseudoR2_N'] = sumstats['PseudoR2_CS'] / rmax
+            sumstats['PseudoR2_MCF'] = 1 - self.LLA / self.LL0
+            sumstats['PseudoR2_MCFA'] = 1 - (self.LLA - k) / self.LL0
+            sumstats['PseudoR2_MFA'] = 1 - (LLR) / (LLR + N)
+            
+        self.sumstats = pd.DataFrame(sumstats, index=['Fit']).T
+        self.vcov = np.linalg.pinv(self.hessian(self.params))
+        self.se_theta = np.diag(self.vcov)**0.5
+        self.res = np.vstack([self.params, self.se_theta]).T
+        self.res = pd.DataFrame(self.res, columns=['params', 'SE'])
+        self.res['t'] = self.res['params'] / self.res['SE']
+        self.res['p'] = sp.stats.t.sf(np.abs(self.res['t']), self.dfe)*2.0
+        
+        
+        
+        
         
     
 class Link(object):
@@ -415,6 +471,65 @@ class PowerLink(Link):
         dmu = 1.0 / (self.dinv_link(self.link(mu)))
         return dmu
     
+ 
+class LogComplementLink(Link):
+    
+    def __init__(self):
+        self.fnc = 'logcomp'
+        
+    def inv_link(self, eta):
+        mu = 1.0 - np.exp(eta)
+        return mu
+    
+    def dinv_link(self, eta):
+        dmu = -np.exp(eta)
+        return dmu
+    
+    def d2inv_link(self, eta):
+        d2mu = -np.exp(eta)
+        return d2mu
+    
+    def link(self, mu):
+        eta = np.log(1 - mu)
+        return eta
+    
+    def dlink(self, mu):
+        dmu = -1.0 / (1.0 - mu)
+        return dmu
+    
+    
+class NegativeBinomialLink(Link):
+    
+    def __init__(self, scale=1.0):
+        self.fnc = 'negbin'
+        self.k = scale
+        self.v = 1.0 / scale
+        
+    def inv_link(self, eta):
+        u = np.exp(eta)
+        mu = u / (self.k * (1 - u))
+        return mu
+    
+    def dinv_link(self, eta):
+        u = np.exp(eta)
+        dmu = u / (self.k * (1 - u)**2)
+        return dmu
+    
+    def d2inv_link(self, eta):
+        u = np.exp(eta)
+        num = u * (u + 1)
+        den = self.k *(u - 1)**3
+        d2mu = -num / den
+        return d2mu
+    
+    def link(self, mu):
+        eta = np.log(mu / (mu + self.v))
+        return eta
+    
+    def dlink(self, mu):
+        dmu = 1.0 / (mu + self.k * mu**2)
+        return dmu
+    
     
     
 
@@ -466,13 +581,13 @@ class ExponentialFamily(object):
         mu = linalg_utils._check_1d(linalg_utils._check_np(mu))
         return y, mu
     
-    def loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
-        return np.sum(self._loglike(y, eta, mu, T, scale, dispersion=1.0))
+    def loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
+        return np.sum(self._loglike(y, eta, mu, T, scale))
     
     def full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         return np.sum(self._full_loglike(y, eta, mu, T, scale))
     
-    def pearson_resid(self, y, eta=None, mu=None, T=None, scale=1.0, phi=1.0):
+    def pearson_resid(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         y, mu = self.cshape(y, mu)
@@ -480,7 +595,7 @@ class ExponentialFamily(object):
         r_p = (y - mu) / np.sqrt(V)
         return r_p
     
-    def signed_resid(self, y, eta=None, mu=None, T=None, scale=1.0, phi=1.0):
+    def signed_resid(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         y, mu = self.cshape(y, mu)
@@ -525,7 +640,7 @@ class Gaussian(ExponentialFamily):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
             
@@ -535,7 +650,7 @@ class Gaussian(ExponentialFamily):
         ll= w * np.power((y - mu), 2) + np.log(scale/self.weights)
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
         llf = ll + LN2PI
         return llf
@@ -552,7 +667,7 @@ class Gaussian(ExponentialFamily):
         mu = T
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
@@ -563,7 +678,7 @@ class Gaussian(ExponentialFamily):
         res = 0.0*mu+1.0
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -593,11 +708,11 @@ class Gaussian(ExponentialFamily):
 
 class InverseGaussian(ExponentialFamily):
     
-    def __init__(self, link=IdentityLink, weights=1.0, scale=1.0, dispersion=1.0):
+    def __init__(self, link=PowerLink(-2), weights=1.0, scale=1.0):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
            
@@ -608,7 +723,7 @@ class InverseGaussian(ExponentialFamily):
         ll+= np.log((scale * y**2) / self.weights)
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
         llf = ll + LN2PI
         return llf 
@@ -626,7 +741,7 @@ class InverseGaussian(ExponentialFamily):
         mu = 1.0 / np.sqrt(-2.0*T)
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
     
@@ -637,7 +752,7 @@ class InverseGaussian(ExponentialFamily):
         res = 3.0 / (FOUR_SQRT2 * np.power(-mu, 2.5))
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -665,11 +780,11 @@ class InverseGaussian(ExponentialFamily):
 
 class Gamma(ExponentialFamily):
     
-    def __init__(self, link=IdentityLink, weights=1.0, scale=1.0, dispersion=1.0):
+    def __init__(self, link=ReciprocalLink, weights=1.0, scale=1.0):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
            
@@ -679,7 +794,7 @@ class Gamma(ExponentialFamily):
         ll = z - w * np.log(z) + sp.special.gammaln(self.weights/scale)
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
         llf = ll + np.log(y)
         return llf 
@@ -697,7 +812,7 @@ class Gamma(ExponentialFamily):
         mu = -1 / T
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
     
@@ -708,7 +823,7 @@ class Gamma(ExponentialFamily):
         res = -2 /(mu**3)
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -744,19 +859,19 @@ class Gamma(ExponentialFamily):
 
 class NegativeBinomial(ExponentialFamily):
     
-    def __init__(self, link=IdentityLink, weights=1.0, scale=1.0):
+    def __init__(self, link=LogLink, weights=1.0, scale=1.0):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
            
         y, mu = self.cshape(y, mu)
-        w = self.weights / scale
+        w = self.weights / 1.0
         
-        v = 1.0 / dispersion
-        kmu = dispersion*mu
+        v = 1.0 / scale
+        kmu = scale*mu
         
         yv = y + v
         
@@ -765,39 +880,39 @@ class NegativeBinomial(ExponentialFamily):
         ll*= w
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
-        llf = ll + self.weights / scale * sp.special.gammaln(y + 1.0)
+        llf = ll + self.weights / 1.0 * sp.special.gammaln(y + 1.0)
         return llf 
 
     
-    def canonical_parameter(self, mu, dispersion=1.0):
-        u = mu * dispersion
+    def canonical_parameter(self, mu, scale=1.0):
+        u = mu * scale
         T = np.log(u / (1.0 + u))
         return T
     
-    def cumulant(self, T, dispersion=1.0):
-        b = (-1.0 / dispersion) * np.log(1 - dispersion * np.exp(T))
+    def cumulant(self, T, scale=1.0):
+        b = (-1.0 / scale) * np.log(1 - scale * np.exp(T))
         return b
     
-    def mean_func(self, T, dispersion=1.0):
+    def mean_func(self, T, scale=1.0):
         u = np.exp(T)
-        mu = -1.0 / dispersion * (u / (1 - u))
+        mu = -1.0 / scale * (u / (1 - u))
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
     
-        V = mu + np.power(mu, 2) * dispersion
+        V = mu + np.power(mu, 2) * scale
         return V
                 
-    def d2canonical(self, mu, dispersion=1.0):
-        res = -2 * dispersion * mu - 1
-        res/= (np.power(mu, 2) * np.power((mu*dispersion+1.0), 2))
+    def d2canonical(self, mu, scale=1.0):
+        res = -2 * scale * mu - 1
+        res/= (np.power(mu, 2) * np.power((mu*scale+1.0), 2))
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -805,8 +920,8 @@ class NegativeBinomial(ExponentialFamily):
         w = self.weights
         d = np.zeros(y.shape[0])
         ix = (y==0)
-        v = 1.0 / dispersion
-        d[ix] = np.log(1 + dispersion * mu[ix]) / dispersion
+        v = 1.0 / scale
+        d[ix] = np.log(1 + scale * mu[ix]) / scale
         yb, mb = y[~ix], mu[~ix]
         u = (yb + v) / (mb + v)
         d[~ix] =  (yb*np.log(yb / mb) - (yb + v) * np.log(u))
@@ -845,11 +960,11 @@ class NegativeBinomial(ExponentialFamily):
     
 class Poisson(ExponentialFamily):
     
-    def __init__(self, link=IdentityLink, weights=1.0, scale=1.0):
+    def __init__(self, link=LogLink, weights=1.0, scale=1.0):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
            
@@ -859,7 +974,7 @@ class Poisson(ExponentialFamily):
         ll = -w * (y * np.log(mu) - mu)
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
         llf = ll + self.weights / scale * np.log(sp.special.factorial(y))
         return llf 
@@ -877,7 +992,7 @@ class Poisson(ExponentialFamily):
         mu = np.exp(T)
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
     
@@ -888,7 +1003,7 @@ class Poisson(ExponentialFamily):
         res = -1  /(mu**2)
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -907,11 +1022,11 @@ class Poisson(ExponentialFamily):
     
 class Binomial(ExponentialFamily):
     
-    def __init__(self, link=IdentityLink, weights=1.0, scale=1.0):
+    def __init__(self, link=LogitLink, weights=1.0, scale=1.0):
         super().__init__(link, weights, scale)
     
  
-    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
            
@@ -921,7 +1036,7 @@ class Binomial(ExponentialFamily):
         ll = -w * (y * np.log(mu) + (1 - y) * np.log(1 - mu))
         return ll
     
-    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0, dispersion=1.0):
+    def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
         w = self.weights
         r = w * y
@@ -944,7 +1059,7 @@ class Binomial(ExponentialFamily):
         mu = u / (1 + u)
         return mu
     
-    def var_func(self, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def var_func(self, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
     
@@ -955,7 +1070,7 @@ class Binomial(ExponentialFamily):
         res = 1.0/((1 - mu)**2)-1.0/(mu**2)
         return res
     
-    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0, dispersion=1.0):
+    def deviance(self, y, T=None, mu=None, eta=None, scale=1.0):
         if mu is None:
             mu = self._to_mean(eta=eta, T=T)
         
@@ -978,13 +1093,4 @@ class Binomial(ExponentialFamily):
     
     
     
-            
-        
-    
-    
-    
-    
-    
-    
-    
-
+ 
