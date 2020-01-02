@@ -14,6 +14,8 @@ import scipy.stats
 import pandas as pd 
 from .utils import linalg_utils
 from .glm3 import Binomial, LogitLink, GLM
+
+
 def sherman_morrison(a, ni):
     t = 1.0 / a + ni / (1 - a)
     u = 1 - a

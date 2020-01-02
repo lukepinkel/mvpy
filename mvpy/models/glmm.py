@@ -294,7 +294,7 @@ class WLMM(object):
         LL = logdetR+logdetC + logdetG + yPy
         return LL
 
-    def fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False,
+    def _fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False,
             compute_hessian=True):
         if hess_opt is False:
             res = sp.optimize.minimize(self.loglike, self.theta,
@@ -313,24 +313,32 @@ class WLMM(object):
                                        jac=self.gradient,
                                        hess=self.hessian,
                                        **optimizer_kwargs)
-
+        
         self.params = res.x
+        self.optimizer = res
         G, Ginv, SigA, R, Rinv, SigE = self.params2mats(res.x)
         self.G, self.Ginv, self.R, self.Rinv = G, Ginv, R, Rinv
         self.SigA, self.SigE = SigA, SigE
         W = linalg_utils.woodbury_inversion(self.Z, C=G, A=R)
         X = self.X
         XtW = X.T.dot(W)
+        self.b = linalg_utils.einv(XtW.dot(X)).dot(XtW.dot(self.y))
+        self.r = self.y - self.X.dot(self.b)
+        self.u = G.dot(self.Z.T.dot(W).dot(self.r))
+        self.SE_b = np.sqrt(np.diag(linalg_utils.einv(XtW.dot(X))))
+        return res
+    
+    def fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False,
+            compute_hessian=True):
+        res = self._fit(optimizer_kwargs, maxiter, verbose, hess_opt, 
+                        compute_hessian)
+        X = self.X
         self.optimizer = res
         self.hessian_est = self.hessian(self.params)
         self.hessian_inv = np.linalg.pinv(self.hessian_est)
         self.SE_theta = np.sqrt(np.diag(self.hessian_inv))
         self.grd = self.gradient(self.params)
         self.gnorm = np.linalg.norm(self.grd) / len(self.params)
-        self.b = linalg_utils.einv(XtW.dot(X)).dot(XtW.dot(self.y))
-        self.SE_b = np.sqrt(np.diag(linalg_utils.einv(XtW.dot(X))))
-        self.r = self.y - self.X.dot(self.b)
-        self.u = G.dot(self.Z.T.dot(W).dot(self.r))
         res = pd.DataFrame(np.concatenate([self.params[:, None], self.b]),
                            columns=['Parameter Estimate'])
         res['Standard Error'] = np.concatenate([self.SE_theta, self.SE_b])
@@ -451,7 +459,7 @@ class GLMM(WLMM):
         self.mod = WLMM(fixed_effects, random_effects, yvar, data,
                         W=np.eye(data.shape[0]), error_structure=None,
                         acov=None)        
-        self.mod.fit()
+        self.mod._fit()
         self.y = self.mod.y
         
     def fit(self, n_iters=200, tol=1e-3, verbose=True):
@@ -466,17 +474,17 @@ class GLMM(WLMM):
             
             mu = self.f.inv_link(eta)
             v = self.f.var_func(T=self.f.canonical_parameter(mu))
-            gp = self.f.link.dlink(mu)
+            gp = self.f.dlink(mu)
             nu = eta + gp*(y - mu)
             v = linalg_utils._check_1d(v)
-            W = 1 / (v * (self.f.link.dlink(mu)**2)[:, 0])
+            W = 1.0 / (v * (self.f.dlink(mu)**2)[:, 0])
             W = np.diag(1/np.sqrt(W))
             
             
             mod = WLMM(self.fe, self.re, self.yvar, self.data, W=W)
             mod.y = nu
             mod.bounds = bounds
-            mod.fit()
+            mod._fit()
             tvar = (np.linalg.norm(theta)+np.linalg.norm(mod.params))
             eps = np.linalg.norm(theta - mod.params) / tvar
             fit_hist.append(eps)
