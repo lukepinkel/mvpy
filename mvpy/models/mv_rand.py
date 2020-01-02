@@ -8,12 +8,17 @@ Created on Wed Sep 11 19:04:52 2019
 
 import numpy as np
 import pandas as pd
+import scipy as sp
 from ..utils import linalg_utils, base_utils
 
 
 def multi_rand(R, size=1000):
     '''
-    Generates multivariate random normal matrix
+    Generates multivariate random normal matrix.  Not suitable for simulating
+    higher order moments, because before being multiplied by the cholesky
+    of the specified covariance/correlation matrix, the standard normal
+    variates are decorrelated, giving a dataset with a covariance nearly
+    exactly equal to that which was specified.
     
     Parameters:
         R: n by n covariance or correlation matrix of the distribution from 
@@ -37,7 +42,7 @@ def multi_rand(R, size=1000):
 
 def random_correlations(n_feats, n_obs=10):
     '''
-    Generate random matrix of pearson correlations
+    Generate random matrix of correlations using the factor method
     
     Parameters:
         n_feats: number of dimensions for the correlation matrix
@@ -54,7 +59,19 @@ def random_correlations(n_feats, n_obs=10):
     return R
 
        
-def vine_corr(d, betaparams):
+def vine_corr(d, betaparams=10):
+    '''
+    Generate random matrix of correlations using the vine method
+    
+    Parameters:
+        d: number of dimensions for the correlation matrix
+        betaparams: parameter which specifies how intercorrelated the random
+                    matrix is to be.  A higher value results in smaller
+                    correlations.
+    
+    Returns:
+        R: random correlation matrix
+    '''
     P = np.zeros((d, d))
     S = np.eye(d)
     for k in range(d-1):
@@ -95,3 +112,85 @@ def onion_corr(d, betaparams=5):
     S = linalg_utils.normalize_diag(S)
     return S
         
+
+
+def f_moment(params, gamma1, gamma2):
+    b, c, d = params
+    b2, c2, d2, bd = b**2, c**2, d**2, b * d
+    eq1 = b2 + 6.0 * bd + 2.0 * c2 + 15.0 * d2 - 1.0
+    eq2 = 2.0 * c * (b2 + 24.0 * bd + 105.0 * d2 + 2) - gamma1
+    eq3 = 24.0 * (bd + c2 * (1.0 + b2 + 28.0*bd) 
+                  + d2 * (12.0 + 48.0 * bd + 141.0 * c2 + 225.0 * d2)) - gamma2
+    return (eq1, eq2, eq3)
+
+def f_corr(r, params, rho):
+    if len(params)==8:
+        _, b1, c1, d1, _, b2, c2, d2 = params
+    else:
+        b1, c1, d1, b2, c2, d2 = params       
+    eq = r * (b1*b2 + 3*b1*d2 + 3*d1*b2 + 9*d1*d2)
+    eq+= r**2 * (2 * c1 * c2)
+    eq+= r**3 * (6 * d1 * d2)
+    eq-=rho
+    return eq
+
+def mcoefs(skew=0, kurtosis=0):
+    res = sp.optimize.root(f_moment, (0.1, 0.1, 0.1), args=(skew, kurtosis),
+                           method='krylov')
+                             
+    return res.x, res.fun
+    
+def mcorr(rho, params):
+    res = sp.optimize.root(f_corr, (0.1), args=(params, rho), method='krylov')
+                             
+    return res.x
+    
+    
+class multivariate_nonnormal:
+    
+    def __init__(self, mu, cov, skew=None, kurt=None):
+        p = len(mu)
+        if skew is None:
+            skew = np.zeros(p)
+        if kurt is None:
+            kurt = np.zeros(p)
+        self.skew = skew
+        self.kurt = kurt
+        self.mu = mu
+        self.cov = cov
+        self.var = np.diag(cov)
+        D = np.diag(np.sqrt(1.0/self.var))
+        self.corr = D.dot(self.cov).dot(D)
+        self._polycoefs = []
+        self._polyf = []
+        for i in range(p):
+            w, t= mcoefs(self.skew[i], self.kurt[i])
+            w = np.append(-w[-2], w)
+            self._polycoefs.append(w)
+            self._polyf.append(t)
+        
+        self._intermediate_rhovech = []
+        for i in range(p):
+            for j in range(i):
+                wi, wj = self._polycoefs[i], self._polycoefs[j]
+                w = np.hstack([wi, wj]).tolist()
+                rij = linalg_utils._check_0d(mcorr(self.corr[i, j], w))
+                self._intermediate_rhovech.append(rij)
+        
+        
+        self.intermediate_corr = np.eye(p)
+        self.intermediate_corr[np.tril_indices(p, -1)] = self._intermediate_rhovech
+        self.intermediate_corr[np.triu_indices(p, 1)] = self._intermediate_rhovech
+        self.chol_factor = linalg_utils.chol(self.intermediate_corr)
+        self.p = p
+    def rvs(self, n=1000):
+        U = sp.stats.multivariate_normal(np.zeros(self.p), self.intermediate_corr).rvs(n)
+        for i in range(self.p):
+            xi = U[:, i]
+            a, b, c, d = self._polycoefs[i]
+            U[:, i] = a + b * xi + c * xi**2 + d * xi**3
+        U*=np.sqrt(self.var)
+        U+=self.mu
+        return U
+    
+    

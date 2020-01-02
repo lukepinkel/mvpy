@@ -652,7 +652,7 @@ class Gaussian(ExponentialFamily):
     
     def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
-        llf = ll + LN2PI
+        llf = ll + LN2PI*y.shape[0]
         return llf
     
     def canonical_parameter(self, mu):
@@ -725,7 +725,7 @@ class InverseGaussian(ExponentialFamily):
     
     def _full_loglike(self, y, eta=None, mu=None, T=None, scale=1.0):
         ll = self._loglike(y, eta, mu, T, scale)
-        llf = ll + LN2PI
+        llf = ll + LN2PI*y.shape[0]
         return llf 
 
     
