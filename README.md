@@ -7,7 +7,7 @@ Currently includes rough implementations of
   - Both via the FactorAnalysis class, fit through constrained Newtons method using a parameterization more robust to small unique variances
   - Factor rotation
 - Linear mixed models capable of handling multivariate models.  Note that the p-values presented in the results table should    not be taken seriously, as they are computed under the assumption of (n-p) degrees of freedom (n observations minus p features).
-  - Untested Generalized linear mixed models, implemented with the less accurate penalized quasi-likelihood method.
+- Generalized linear mixed models via the penalized quasi-likelihood method.
 - Latent variable correlations for handling polychorric, polytomous and tetrachoric correlation
 - Partial least squares (soft modeling) techniques
   - Partial least squares covariance
@@ -25,6 +25,8 @@ Currently includes rough implementations of
   - Logit, Probit, Log, and Reciprocal links
 - Negative Binomial Models
   - Currently only supports NB2, although plans exist to implement other overdispersed count models 
+- Random correlation matrices via the vine method, onion method, or factor method
+- Multivariate non-normal data with the ability to specify (standardized) third and fourth order moments. 
 ## Speed
 For most models, internal optimization is done using scipy's trust-constr, which is robust but fairly slow.  All models have an option to pass to another choice to the optimizer; a safe and quick alternative to use is trust-ncg. 
 ## Testing and Validity
