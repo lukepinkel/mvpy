@@ -6,17 +6,13 @@ Created on Tue Dec 31 18:43:40 2019
 @author: lukepinkel
 """
 
-import patsy  #analysis:ignore
-import collections #analysis:ignore
-import numpy as np # analysis:ignore
-import scipy as sp # analysis:ignore
-import scipy.stats # analysis:ignore
-import pandas as pd # analysis:ignore
-import mvpy.api as mv # analysis:ignore
-import statsmodels.api as sm # analysis:ignore
-import matplotlib.pyplot as plt # analysis:ignore
-from .utils import linalg_utils, base_utils, data_utils #analysis:ignore
-from ..glm3 import Binomial, Poisson, Normal, Gamma, LogitLink, LogLink, GLM #analysis:ignore
+import patsy 
+import collections 
+import numpy as np 
+import scipy as sp 
+import scipy.stats
+import pandas as pd 
+from .utils import linalg_utils
 
 def sherman_morrison(a, ni):
     t = 1.0 / a + ni / (1 - a)
@@ -51,8 +47,8 @@ class Exchangeable:
             self.rxpx[i] = np.tril_indices(ni, -1)
             self.sizes[i] = ni
         for x in self.unique_sizes:
-            self.dmats[x] = np.linalg.pinv(mv.dmat(x))
-            self.drda[x] = mv.vech(np.ones((ni, ni)) - np.eye(ni))
+            self.dmats[x] = np.linalg.pinv(linalg_utils.dmat(x))
+            self.drda[x] = linalg_utils.vech(np.ones((ni, ni)) - np.eye(ni))
             
         self.n *= 0.5
 
@@ -121,8 +117,8 @@ class Independent:
             ni = int(self.clen[i])
             self.mats[i] = np.eye(ni)
         for x in self.unique_sizes:
-            self.dmats[x] = np.linalg.pinv(mv.dmat(x))
-            self.drda[x] = mv.vech(np.zeros((ni, ni)))
+            self.dmats[x] = np.linalg.pinv(linalg_utils.dmat(x))
+            self.drda[x] = linalg_utils.vech(np.zeros((ni, ni)))
             
     def unpack(self, params):
         return params, None
@@ -185,7 +181,7 @@ class MDependent:
             self.mats[i] = np.eye(ni)
             self.n += ni
         for x in self.unique_sizes:
-            self.dmats[x] = np.linalg.pinv(mv.dmat(x))
+            self.dmats[x] = np.linalg.pinv(linalg_utils.dmat(x))
             rows, cols = np.indices((x, x))
             ixa, ixb = [], []
             for j in range(1, m+1):
@@ -199,7 +195,7 @@ class MDependent:
                 A = np.zeros((ni, ni))
                 A[z] = 1
                 A[z[::-1]] = 1
-                D.append(mv.vechc(A))
+                D.append(linalg_utils.vechc(A))
             D = np.concatenate(D, axis=1)
             self.drda[x] = D
             
@@ -272,7 +268,7 @@ class Unstructured:
         self.npars=ni
         self.unique_sizes = np.unique(list(self.clen.values()))     
         for x in self.unique_sizes:
-            self.dmats[x] = np.linalg.pinv(mv.dmat(x))
+            self.dmats[x] = np.linalg.pinv(linalg_utils.dmat(x))
             
     
     def estimate(self, residuals, scale, p):
@@ -345,7 +341,7 @@ class AR1:
             self.mixinv[i] = (np.concatenate([ixa, ixb]), np.concatenate([ixb, ixa]))
         
         for x in self.unique_sizes:
-            self.dmats[x] = np.linalg.pinv(mv.dmat(x))
+            self.dmats[x] = np.linalg.pinv(linalg_utils.dmat(x))
             
     def estimate(self, residuals, scale, p):
         alpha = 0.05
@@ -388,7 +384,7 @@ class AR1:
         return Vinvi
     
     def dcorr(self, i, alpha):
-        return mv.vech(self.mats[i]*(alpha)**(self.mats[i]-1))
+        return linalg_utils.vech(self.mats[i]*(alpha)**(self.mats[i]-1))
     
     def get_dmat(self, i):
         Dp = self.dmats[self.clen[i]]
@@ -528,8 +524,8 @@ class GEE:
             WW = np.kron(W, W)
             G = Dp.dot(WW).dot(Dp.T)
             drda = self.wcov.dcorr(i, alpha)
-            r = mv.vech(V) - mv.vech(np.outer(ri, ri))
-            d = (mv.vech(np.outer(vsq, vsq))*drda)
+            r = linalg_utils.vech(V) - linalg_utils.vech(np.outer(ri, ri))
+            d = (linalg_utils.vech(np.outer(vsq, vsq))*drda)
             C = d.dot(G)
             U+= C.dot(r)
             H = np.dot(C.T, C)
