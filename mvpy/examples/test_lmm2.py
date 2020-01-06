@@ -11,8 +11,7 @@ from numpy import eye, kron
 from mvpy.api import (vine_corr, multi_rand, center,
                             vech, jmat)
 from scipy.linalg import block_diag
-from scipy.optimize import minimize
-from mvpy.api import LMM
+from mvpy.api import MLMM
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -60,7 +59,7 @@ k = 0
 
 while i<200:
     fixed_effects, random_effects, yvar, data, Sv, Se = initialize_lmm()
-    model = LMM(fixed_effects, random_effects,  yvar, data)
+    model = MLMM(fixed_effects, random_effects,  yvar, data)
     true_params = np.concatenate([vech(Sv), vech(Se)])
         
     model.fit(verbose=0)
@@ -88,7 +87,7 @@ while i<200:
 while i<400:
     fixed_effects, random_effects, yvar, data, Sv, Se = initialize_lmm(beta_params_v=5,
                                                                        beta_params_e=10)
-    model = LMM(fixed_effects, random_effects,  yvar, data)
+    model = MLMM(fixed_effects, random_effects,  yvar, data)
     true_params = np.concatenate([vech(Sv), vech(Se)])
         
     model.fit(verbose=0)

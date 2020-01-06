@@ -78,7 +78,12 @@ class LMM(object):
             Zij = patsy.dmatrix(random_effects[key], data=data,
                                 return_type='dataframe')
             # stratify re variable by dummy columns
-            Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T 
+            Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T
+            if type(yvar) is list:
+                Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
+                Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
+                Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
+                
             Z.append(Zi)
             k = Zij.shape[1]*n_vars
             # RE dependence structure
@@ -130,9 +135,8 @@ class LMM(object):
         # Vectorize equations - Add flexibility for dependent variable specific
         # design matrices
         elif type(yvar) is list:
-            y = linalg_utils.vecc(data[yvar].values)
-            Z = np.kron(np.eye(n_vars), Z)
-            X = np.vstack([X for i in range(n_vars)])
+            y = linalg_utils.vecc(data[yvar].values.T)
+            X = np.kron(X, np.eye(n_vars))
 
         var_params = np.concatenate([re_struct[key]["params"]
                                      for key in re_struct.keys()])
@@ -167,34 +171,45 @@ class LMM(object):
             Kv = linalg_utils.kronvec_mat(Av_shape, Sv_shape, sparse=True)
             Ip = sps.csc_matrix(sps.eye(np.product(Sv_shape)))
             vecAv = sps.csc_matrix(linalg_utils.vecc(Av))
-
             D = sps.csc_matrix(Kv.dot(sps.kron(vecAv, Ip)))
+    
             if key != 'error':
                 D = sps.csc_matrix(ZoZ[key].dot(D))
             tmp = sps.csc_matrix(linalg_utils.dmat(int(np.sqrt(D.shape[1]))))
             deriv_mats[key] = D.dot(tmp)
-
+       #if n_vars==1:
+       #    bounds = [(0, None) if x == 1 else (None, None) for x in theta]
+       #else:
+       #    bounds = [(0, None) if x == 1 else (None, None) for x in theta[:-len(mv.vech(np.eye(n_vars)))]]
+       #    bounds+= [(1, 1) if  x==1 else (0, 0) for x in mv.vech(np.eye(n_vars))]
+        bounds = [(0, None) if x == 1 else (None, None) for x in theta]
         self.var_struct = var_struct
         self.deriv_mats = deriv_mats
-        self.bounds = [(0, None) if x == 1 else (None, None) for x in theta]
+        self.bounds = bounds
         self.theta = theta
         self.partitions = np.cumsum(partitions)
         J = sps.hstack([deriv_mats[key] for key in deriv_mats])
         self.jac_mats = [J[:, i].reshape(Z.shape[0], Z.shape[0], order='F')
                          for i in range(J.shape[1])]
 
+        if n_vars==1:
+            fe_names = fixed_effects.tolist()
+        else: 
+            fe_names = [[x+':'+yv for x in fixed_effects.tolist()] for yv in yvar]
+            fe_names = [x for y in fe_names for x in y]
         self.X = linalg_utils._check_np(X)
         self.Z = linalg_utils._check_np(Z)
         self.y = linalg_utils._check_np(y)
         self.error_struct = error_struct
         self.re_struct = re_struct
         self.ZoZ = ZoZ
-        self.res_names = res_names + fixed_effects.tolist()
+        self.res_names = res_names + fe_names
         self.n_vars = n_vars
         self.XZY = np.block([X, Z, y])
         self.XZ = np.block([X, Z])
         self.A = np.block([[X, Z], [np.zeros((Z.shape[1], X.shape[1])),
                            np.eye(Z.shape[1])]])
+        self._is_multivar = type(yvar)==list
 
     def params2mats(self, theta=None):
         '''
@@ -221,7 +236,7 @@ class LMM(object):
         p1, p2 = int(partitions[-2]), int(partitions[-1])
         Verr = linalg_utils.invech(theta[p1:p2])
         R = np.kron(Verr, error_struct['acov'])
-        Rinv = np.kron(np.linalg.inv(Verr), error_struct['acov'])
+        Rinv = np.kron(error_struct['acov'], np.linalg.inv(Verr))
         G, Ginv = sp.linalg.block_diag(*Glist), sp.linalg.block_diag(*Ginvlist)
 
         SigE = Verr.copy()
@@ -448,5 +463,3 @@ class LMM(object):
                     H.append(Hij[0])
         H = linalg_utils.invech(np.array(H))
         return H
-    
-    

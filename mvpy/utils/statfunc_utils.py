@@ -444,3 +444,51 @@ def multivariate_association_tests(rho2, a, b, dfe):
         sumstats = sumstats.T
         sumstats = pd.concat([sumstats, rlr])
         return sumstats, effect_sizes, rho2
+
+
+
+def multivariate_kurtosis(X):
+    m = np.mean(X, axis=0)
+    N = X.shape[0]
+    n = N - 1.0
+    Z = X - m
+    S = Z.T.dot(Z) / n
+    W = np.linalg.pinv(S)
+    eta = 0.0
+    p = (X.shape[1]*(X.shape[1]+2))
+    for i in range(X.shape[0]):
+        Zi = Z[i]
+        eta += (Zi.T.dot(W).dot(Zi)**2)/p
+    eta/=X.shape[0]
+    return eta
+
+def multivar_marginal_kurtosis(X):
+    k = sp.stats.moment(X, 4)/(sp.stats.moment(X, 2)**2)/3.0
+    return k
+
+
+def cov_sample_cov(X=None, S=None, excess_kurt=None, kurt=None):
+    if S is None:
+        m = np.mean(X, axis=0)
+        N = X.shape[0]
+        n = N - 1.0
+        Z = X - m
+        S = Z.T.dot(Z) / n
+    if kurt is None:
+        if excess_kurt is None:
+            if X is None:
+                kurt = np.zeros(X.shape[1])
+            else:
+                kurt = multivar_marginal_kurtosis(X)
+        else:
+            kurt = (excess_kurt + 3.0) / 3.0
+    D = np.linalg.pinv(mv.dmat(S.shape[0]))
+    u = np.atleast_2d(np.sqrt(kurt))
+    A = 0.5 * (u + u.T)
+    C = A*S
+    v = np.concatenate([mv.vechc(C), mv.vechc(S)], axis=1)
+    M = np.eye(2)
+    M[1, 1] = -1
+    V = 2*D.dot(np.kron(C, C)).dot(D.T)+v.dot(M).dot(v.T)
+    return V      
+    
