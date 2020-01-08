@@ -433,6 +433,9 @@ class Huber:
         self.c1 = 0.6745
         
     def rho_func(self, u):
+        '''
+        Function to be minimized
+        '''
         v = u.copy()
         ixa = np.abs(u) < self.c0
         ixb = ~ixa
@@ -441,6 +444,9 @@ class Huber:
         return v
     
     def psi_func(self, u):
+        '''
+        Derivative of rho
+        '''
         v = u.copy()
         ixa = np.abs(u) < self.c0
         ixb = ~ixa
@@ -448,6 +454,9 @@ class Huber:
         return v
     
     def phi_func(self, u):
+        '''
+        Second derivative of rho
+        '''
         v = u.copy()
         ixa = np.abs(u) <= self.c0
         ixb = ~ixa
@@ -456,6 +465,9 @@ class Huber:
         return v
     
     def weights(self, u):
+        '''
+        Equivelant to psi(u)/u
+        '''
         v = u.copy()
         ixa = np.abs(u) < self.c0
         ixb = ~ixa
@@ -470,6 +482,9 @@ class Bisquare:
         self.c1 = 0.6745
     
     def rho_func(self, u):
+        '''
+        Function to be minimized
+        '''
         v = u.copy()
         c = self.c0
         ixa = np.abs(u) < c
@@ -479,30 +494,39 @@ class Bisquare:
         return v
     
     def psi_func(self, u):
+        '''
+        Derivative of rho
+        '''
         v = u.copy()
         c = self.c0
         ixa = np.abs(u) <= c
         ixb = ~ixa
-        v[ixa] = u * (1 - (u / c)**2)**2
+        v[ixa] = u[ixa] * (1 - (u[ixa] / c)**2)**2
         v[ixb] = 0
         return v
     
     def phi_func(self, u):
+        '''
+        Second derivative of rho
+        '''
         v = u.copy()
         c = self.c0
         ixa = np.abs(u) <= self.c0
         ixb = ~ixa
         u2c2 = (u**2 / c**2)
-        v[ixa] = (1 -u2c2) * (1 - 5 * u2c2)
+        v[ixa] = (1 -u2c2[ixa]) * (1 - 5 * u2c2[ixa])
         v[ixb] = 0
         return v
     
     def weights(self, u):
+        '''
+        Equivelant to psi(u)/u
+        '''
         v = u.copy()
         c = self.c0
         ixa = np.abs(u) < c
         ixb = ~ixa
-        v[ixa] = (1 - (u / c)**2)**2
+        v[ixa] = (1 - (u[ixa] / c)**2)**2
         v[ixb] = 0
         return v
         
@@ -545,8 +569,8 @@ class RLS:
                 break
             b0 = beta
         G = np.linalg.inv(np.dot(X.T, X))
-        mse = (self.f.psi_func(u)**2).mean()
-        mse /= (self.f.phi_func(u)).mean()**2
+        mse = (self.f.psi_func(resids)**2).mean()
+        mse /= (self.f.phi_func(resids)).mean()**2
         se = np.sqrt(np.diag(G*mse))
         self.Gw = XtWX_inv
         self.gram = G

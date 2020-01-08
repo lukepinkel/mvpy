@@ -80,6 +80,7 @@ class LMM(object):
             # stratify re variable by dummy columns
             Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T
             if type(yvar) is list:
+                # This should be changed to kron(Zi, eye)
                 Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
                 Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
                 Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
