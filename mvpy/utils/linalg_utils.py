@@ -112,7 +112,7 @@ def duplication_matrix(n):
 
 def psuedo_duplication_matrix(n):
     D = duplication_matrix(n)
-    Dp = np.linalg.pinv(np.dot(D.T, D)).dot(D.T)
+    Dp = np.linalg.pinv(np.dot(D.T, D)).dot(D.T) #Redundant
     return Dp
 
 def elimination_matrix(n):
@@ -1060,6 +1060,24 @@ def normdiff(a, b):
     return diff
 
 
+def fastls(X, y):
+    '''
+    Fast albeit potentially numerically inaccurate algorithm to compute
+    OLS coefficients, sum of square errors, and the covariance matrix for
+    the coefficient estimates (given a correctly specified model)
+    '''
+    n, p = X.shape
+    G = X.T.dot(X)
+    c = X.T.dot(y)
+    L = chol(G)
+    w = np.linalg.solve(L, c)
+    s2 =  (np.dot(y.T, y) - w.T.dot(w)) / (n - p)
+    beta = np.linalg.solve(L.T, w)
+    Linv = np.linalg.inv(L)
+    Ginv = np.dot(Linv.T, Linv)
+    beta_cov = s2 * Ginv
+    return s2, beta, beta_cov
+    
 
 
 

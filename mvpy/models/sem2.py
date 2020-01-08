@@ -468,7 +468,7 @@ class SEM:
         G = self.dsigma(free)
         H =  self._obj_func.hessian(Sigma, G)
         H = H[self.idx][:, self.idx]
-        return H
+        return -H
         
     
     def get_sigma(self, free):
@@ -549,7 +549,7 @@ class SEM:
         self.Sigma = self.get_sigma(self.free)
         
         self.SE_exp = 2*np.diag(self.einfo(self.free)/self.n_obs)**0.5
-        self.SE_obs = np.diag(np.linalg.pinv(-self.hessian(self.free))/self.n_obs)**0.5
+        self.SE_obs = np.diag(np.linalg.pinv(self.hessian(self.free))/self.n_obs)**0.5
         Vrob, scale = self.robust_cov(self.free)
         self.SE_rob = np.sqrt(np.diag(Vrob)/75.0)
         self.res = pd.DataFrame([self.free, self.SE_exp, self.SE_obs, self.SE_rob], 

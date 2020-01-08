@@ -28,17 +28,51 @@ class GLM:
     def __init__(self, frm=None, data=None, fam=None, scale_estimator='M'):
         '''
         Generalized linear model class.  Currently supports
-        dependent Bernoulli and Poisson variables, and 
-        logit, probit, log, and reciprocal link functions.
+        dependent Binomial, Gaussian, Gamma, Inverse Gamma,
+        Poisson, and Negative Binomial dependent variables, and 
+        cloglog, identity, log, logit, log complement probit, negative binomial
+        and reciprocal link functions
+  
         
-        Inverse Gaussian, and Gamma will be added to distributions
-        Cloglog, and identity link functions will be added
         Parameters
         -----------
-            frm: string, formula
-            data: dataframe
-            fam: class of the distribution being modeled  
+            frm : str
+                  formula
+            data : array
+                   pandas dataframe
+            fam : object
+                  class of the distribution being modeled  
         
+        Attributes
+        ----------
+            n_obs : float
+                    number of observations
+            n_feats : float
+                      number of features(independent variables)
+            dfe : float
+                  Error degrees of freedom, given by n_obs - n_feats
+            jn : array
+                array of (n_obs x 1) ones
+            scale_handling : str
+                             Method for handling scale
+            theta_init : array
+                         Initial estimat of the parameters 
+            X : array
+                Array of independent variables
+            xcols : panads index
+                    the index of the columns of x (if applicable)
+            xix : pandas index
+                  the index of the rows of x (if applicable)
+            x_is_pd : bool
+                      Boolean True if X is a pandas dataframe
+            Y : array
+                Array of dependent variables
+            ycols : pandas index
+                    the index of the columns of y (if applicable)
+            yix : pandas index
+                  the index of the rows of y (if applicable)
+            y_is_pd : bool
+                      Boolean True if Y is a pandas dataframe
         '''
         self.f = fam
         Y, X = patsy.dmatrices(frm, data, return_type='dataframe')
@@ -69,6 +103,22 @@ class GLM:
             self.theta_init = np.concatenate([self.theta_init, np.atleast_1d(phi_init)])
      
     def _est_scale(self, y, mu):
+        '''
+        Computes the method of moments estimate of scale(dispersion)
+        s = \frac{1}{n - p} \sum (y - mu)^{2} / V_mu(mu)
+        
+        Parameters
+        ----------
+        y : array
+            dependent variable
+        mu : array
+             mean estimate given the independent variables
+        
+        Returns
+        -------
+        s : scalar
+            estimate of the scale/dispersion
+        '''
         y, mu = self.f.cshape(y, mu)
         r = (y - mu)**2
         v = self.f.var_func(mu=mu)
@@ -77,6 +127,22 @@ class GLM:
         return s
     
     def predict(self, params):
+        '''
+        Predicted mean given parameters
+        
+        Parameters
+        ----------
+        params : array
+                 if the the method of estimating the scale is specified as 'NR'
+                 (i.e. newton-raphson), then the params vector is p+1 where p
+                 is the number of independent variables.  Else it is just p
+        
+        Returns
+        -------
+        mu : array
+             estimate of the mean of the independent variable
+        
+        '''
         if self.scale_handling == 'NR':
             beta, _ = params[:-1], params[-1]
             eta = self.X.dot(beta)
@@ -87,6 +153,20 @@ class GLM:
         return mu
     
     def loglike(self, params):
+        '''
+        Log likelihood
+        Parameters
+        ----------
+        params : array
+                 if the the method of estimating the scale is specified as 'NR'
+                 (i.e. newton-raphson), then the params vector is p+1 where p
+                 is the number of independent variables.  Else it is just p
+        
+        Returns
+        -------
+        ll : scalar
+             log likelihood
+        '''
         params = linalg_utils._check_1d(params)
         if self.scale_handling == 'NR':
             beta, tau = params[:-1], params[-1]
@@ -104,6 +184,22 @@ class GLM:
         return ll
 
     def gradient(self, params):
+        '''
+        Returns the gradient(vector of first partial derivatives) of the 
+        log likelihood.
+        Parameters
+        ----------
+        params : array
+                 if the the method of estimating the scale is specified as 'NR'
+                 (i.e. newton-raphson), then the params vector is p+1 where p
+                 is the number of independent variables.  Else it is just p
+        
+        Returns
+        -------
+        g : vector
+            vector of first partial derivatives of the loglikelihood with
+            respect to each parameter
+        '''
         params = linalg_utils._check_1d(params)
         if self.scale_handling == 'NR':
             beta, tau = params[:-1], params[-1]
@@ -125,6 +221,21 @@ class GLM:
         return g
     
     def hessian(self, params):
+        '''
+        Returns the hessian(matrix of second order partial derivatives) of the 
+        log likelihood.
+        Parameters
+        ----------
+        params : array
+                 if the the method of estimating the scale is specified as 'NR'
+                 (i.e. newton-raphson), then the params vector is p+1 where p
+                 is the number of independent variables.  Else it is just p
+        
+        Returns
+        -------
+        H : array
+             Matrix of second order partial derivatives
+        '''
         if self.scale_handling == 'NR':
             beta, tau = params[:-1], params[-1]
             eta = self.X.dot(beta)
@@ -147,6 +258,9 @@ class GLM:
     
     
     def _fit_optim(self):
+        '''
+        Used internally to fit using scipy's minimize
+        '''
         opts = {'verbose':3}
         optimizer = sp.optimize.minimize(self.loglike, self.theta_init,
                                          jac=self.gradient,
@@ -155,6 +269,11 @@ class GLM:
         return optimizer
     
     def _fit_manual(self, theta=None):
+        '''
+        Used internally to fit using a naive newton-raphson implementation.
+        Mostly for the optimization of the gamma distribution, and essentially
+        equivelant to most IRWLS implementations.
+        '''
         if theta is None:
             theta = self.theta_init
     
@@ -182,6 +301,14 @@ class GLM:
         return theta, fit_hist
             
     def fit(self, method=None):
+        '''
+        Fit GLM.
+        Parameters
+        ----------
+        method : str
+                 'mn' for manual irwls, or 'sp' for scipy's minimize
+
+        '''
         self.theta0 = self.theta_init.copy()
         if method is None:
             if isinstance(self.f, Gamma):

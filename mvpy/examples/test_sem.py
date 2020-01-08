@@ -6,7 +6,7 @@ Created on Sat Sep 14 19:27:43 2019
 @author: lukepinkel
 """
 
-from mvpy.api import SEMModel
+from mvpy.api import SEM
 import pandas as pd
 import numpy as np
 
@@ -61,7 +61,7 @@ Theta.loc['y8', 'y4'] = 0.05
 Theta.loc['y8', 'y6'] = 0.05
 
 
-sem_mod = SEMModel(Zg, Lambda, Beta, Theta.values)
+sem_mod = SEM(Zg, Lambda, Beta, Theta.values)
 sem_mod.fit(xtol=1e-500, gtol=1e-500, maxiter=2000)
 sem_mod.res
 
