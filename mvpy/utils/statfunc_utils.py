@@ -16,9 +16,8 @@ from numpy.linalg import slogdet, pinv
 from scipy.special import erf, erfinv
 from scipy.stats import chi2 as chi2_dist
 from scipy.optimize import minimize #analysis:ignore
-
 from .base_utils import corr, check_type, valid_overlap #analysis:ignore
-from .linalg_utils import _check_1d, _check_np
+from .linalg_utils import _check_1d, _check_np, dmat, vechc
 
 def norm_pdf(x, mu=0, s=1):
     '''
@@ -482,13 +481,217 @@ def cov_sample_cov(X=None, S=None, excess_kurt=None, kurt=None):
                 kurt = multivar_marginal_kurtosis(X)
         else:
             kurt = (excess_kurt + 3.0) / 3.0
-    D = np.linalg.pinv(mv.dmat(S.shape[0]))
+    D = np.linalg.pinv(dmat(S.shape[0]))
     u = np.atleast_2d(np.sqrt(kurt))
     A = 0.5 * (u + u.T)
     C = A*S
-    v = np.concatenate([mv.vechc(C), mv.vechc(S)], axis=1)
+    v = np.concatenate([vechc(C), vechc(S)], axis=1)
     M = np.eye(2)
     M[1, 1] = -1
     V = 2*D.dot(np.kron(C, C)).dot(D.T)+v.dot(M).dot(v.T)
     return V      
     
+def trim_extremes(x, alpha=10):
+    if alpha>1:
+        alpha/=100
+    n = x.shape[0]
+    k = int(np.round(alpha * n))
+    order = x.argsort()
+    x = x[order]
+    x = x[k:-k]
+    return x
+
+def trimmed_mean(x, alpha=10):
+    x = trim_extremes(x, alpha=alpha)
+    return np.mean(x)
+
+class Huber:
+    
+    def __init__(self):
+        self.c0 = 1.345
+        self.c1 = 0.6745
+        
+    def rho_func(self, u):
+        '''
+        Function to be minimized
+        '''
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixa] = u[ixa]**2
+        v[ixb] = np.abs(2*u[ixb])*self.c0 - self.c0**2
+        return v
+    
+    def psi_func(self, u):
+        '''
+        Derivative of rho
+        '''
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixb] = self.c0 * np.sign(u[ixb])
+        return v
+    
+    def phi_func(self, u):
+        '''
+        Second derivative of rho
+        '''
+        v = u.copy()
+        ixa = np.abs(u) <= self.c0
+        ixb = ~ixa
+        v[ixa] = 1
+        v[ixb] = 0
+        return v
+    
+    def weights(self, u):
+        '''
+        Equivelant to psi(u)/u
+        '''
+        v = u.copy()
+        ixa = np.abs(u) < self.c0
+        ixb = ~ixa
+        v[ixa] = 1
+        v[ixb] = self.c0 / np.abs(u[ixb])
+        return v
+        
+class Bisquare:
+    
+    def __init__(self):
+        self.c0 = 4.685
+        self.c1 = 0.6745
+    
+    def rho_func(self, u):
+        '''
+        Function to be minimized
+        '''
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) < c
+        ixb = ~ixa
+        v[ixa] = c**2 / 3 * (1 - ((1 - (u[ixa] / c)**2)**3))
+        v[ixb] = 2 * c
+        return v
+    
+    def psi_func(self, u):
+        '''
+        Derivative of rho
+        '''
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) <= c
+        ixb = ~ixa
+        v[ixa] = u[ixa] * (1 - (u[ixa] / c)**2)**2
+        v[ixb] = 0
+        return v
+    
+    def phi_func(self, u):
+        '''
+        Second derivative of rho
+        '''
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) <= self.c0
+        ixb = ~ixa
+        u2c2 = (u**2 / c**2)
+        v[ixa] = (1 -u2c2[ixa]) * (1 - 5 * u2c2[ixa])
+        v[ixb] = 0
+        return v
+    
+    def weights(self, u):
+        '''
+        Equivelant to psi(u)/u
+        '''
+        v = u.copy()
+        c = self.c0
+        ixa = np.abs(u) < c
+        ixb = ~ixa
+        v[ixa] = (1 - (u[ixa] / c)**2)**2
+        v[ixb] = 0
+        return v
+        
+class Hampel:
+    
+    def __init__(self, k=0.9016085):
+        self.a = 1.5 * k
+        self.b = 3.5 * k
+        self.r = 8.0 * k
+        self.k = k
+        self.c = self.a / 2.0 * (self.b - self.a + self.r)
+        self.a2 = self.a**2
+    
+    def rho_func(self, u):
+        '''
+        Function to be minimized
+        '''
+        a, a2, b, c, r = self.a, self.a2, self.b, self.c, self.r
+        v = u.copy()
+        au = np.abs(u)
+        ixa = au <= a
+        ixb = (au>a) * (au<=b)
+        ixc = (au>b) * (au<=r)
+        ixd = au>r
+        v[ixa] = 0.5 * u[ixa]**2 / c
+        v[ixb] = (0.5 * a2 + a*(au[ixb] - a)) / c
+        v[ixc] = 0.5 * (2*b-a+(au[ixc]-b)*(1+(r-au[ixc])/(r-b))) / c
+        v[ixd] = 1.0
+        return v
+    
+    def psi_func(self, u):
+        '''
+        Derivative of rho
+        '''
+        v = u.copy()
+        a, b, r = self.a, self.b, self.r
+        au = np.abs(u)
+        sgnu = np.sign(u)
+        ixa = au <= self.a
+        ixb = (au>a) * (au<=b)
+        ixc = (au>b) * (au<=r)
+        ixd = au>r
+        v[ixa] = u[ixa]
+        v[ixb] = a * sgnu[ixb]
+        v[ixc] = a * sgnu[ixc] * (r - au[ixc]) / (r - b)
+        v[ixd] = 0
+        return v
+    
+    def phi_func(self, u):
+        '''
+        Second derivative of rho
+        '''
+        v = np.zeros(u.shape[0])
+        a, b, r = self.a, self.b, self.r
+        au = np.abs(u)
+        ixa = au <= self.a
+        ixc = (au>b) * (au<=r)
+        v[ixa] = 1.0
+        v[ixc] = (a * np.sign(u)[ixc] * u[ixc]) / (au[ixc] * (r - b))
+        return v
+    
+    def weights(self, u):
+        '''
+        Equivelant to psi(u)/u
+        '''
+        v = np.zeros(u.shape[0])
+        a, b, r = self.a, self.b, self.r
+        au = np.abs(u)
+        ixa = au <= self.a
+        ixb = (au>a) * (au<=b)
+        ixc = (au>b) * (au<=r)
+        v[ixa] = 1.0
+        v[ixb] = a / au[ixb]
+        v[ixc] = a * (r - au[ixc]) / (au[ixc] * (r - b))
+        return v
+            
+    
+
+
+
+
+
+
+
+
+
+
+
+

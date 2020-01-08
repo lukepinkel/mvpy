@@ -13,7 +13,7 @@ import scipy as sp
 import scipy.stats
 
 from ..utils import linalg_utils, base_utils, statfunc_utils
-
+from ..utils.statfunc_utils import Huber, Bisquare, Hampel # analysis:ignore
 
 class LM:
 
@@ -426,110 +426,7 @@ class OLS(GeneralLinearModel):
                                             self.n-self.p)*2.0
                 
 
-class Huber:
-    
-    def __init__(self):
-        self.c0 = 1.345
-        self.c1 = 0.6745
-        
-    def rho_func(self, u):
-        '''
-        Function to be minimized
-        '''
-        v = u.copy()
-        ixa = np.abs(u) < self.c0
-        ixb = ~ixa
-        v[ixa] = u[ixa]**2
-        v[ixb] = np.abs(2*u[ixb])*self.c0 - self.c0**2
-        return v
-    
-    def psi_func(self, u):
-        '''
-        Derivative of rho
-        '''
-        v = u.copy()
-        ixa = np.abs(u) < self.c0
-        ixb = ~ixa
-        v[ixb] = self.c0 * np.sign(u[ixb])
-        return v
-    
-    def phi_func(self, u):
-        '''
-        Second derivative of rho
-        '''
-        v = u.copy()
-        ixa = np.abs(u) <= self.c0
-        ixb = ~ixa
-        v[ixa] = 1
-        v[ixb] = 0
-        return v
-    
-    def weights(self, u):
-        '''
-        Equivelant to psi(u)/u
-        '''
-        v = u.copy()
-        ixa = np.abs(u) < self.c0
-        ixb = ~ixa
-        v[ixa] = 1
-        v[ixb] = self.c0 / np.abs(u[ixb])
-        return v
-        
-class Bisquare:
-    
-    def __init__(self):
-        self.c0 = 4.685
-        self.c1 = 0.6745
-    
-    def rho_func(self, u):
-        '''
-        Function to be minimized
-        '''
-        v = u.copy()
-        c = self.c0
-        ixa = np.abs(u) < c
-        ixb = ~ixa
-        v[ixa] = c**2 / 3 * (1 - ((1 - (u[ixa] / c)**2)**3))
-        v[ixb] = 2 * c
-        return v
-    
-    def psi_func(self, u):
-        '''
-        Derivative of rho
-        '''
-        v = u.copy()
-        c = self.c0
-        ixa = np.abs(u) <= c
-        ixb = ~ixa
-        v[ixa] = u[ixa] * (1 - (u[ixa] / c)**2)**2
-        v[ixb] = 0
-        return v
-    
-    def phi_func(self, u):
-        '''
-        Second derivative of rho
-        '''
-        v = u.copy()
-        c = self.c0
-        ixa = np.abs(u) <= self.c0
-        ixb = ~ixa
-        u2c2 = (u**2 / c**2)
-        v[ixa] = (1 -u2c2[ixa]) * (1 - 5 * u2c2[ixa])
-        v[ixb] = 0
-        return v
-    
-    def weights(self, u):
-        '''
-        Equivelant to psi(u)/u
-        '''
-        v = u.copy()
-        c = self.c0
-        ixa = np.abs(u) < c
-        ixb = ~ixa
-        v[ixa] = (1 - (u[ixa] / c)**2)**2
-        v[ixb] = 0
-        return v
-        
+
 
 class RLS:
     
@@ -568,22 +465,32 @@ class RLS:
             if db < tol:
                 break
             b0 = beta
+        dfe = n - p
         G = np.linalg.inv(np.dot(X.T, X))
-        mse = (self.f.psi_func(resids)**2).mean()
-        mse /= (self.f.phi_func(resids)).mean()**2
-        se = np.sqrt(np.diag(G*mse))
+        scale = self.scale(resids)
+        tmp = self.f.phi_func(resids).mean()
+        correction_factor = 1.0 + p / n * (1 - tmp) / tmp
+        num = (self.f.psi_func(u)**2). mean() * scale**2 * n / dfe
+        den = ((self.f.phi_func(u)).sum() / n) ** 2
+        mse1 = num / den * correction_factor
+        mse2 = np.sum(w * resids**2) / (n - p)
+        se1 = np.sqrt(np.diag(G * mse1))
+        se2 = np.sqrt(np.diag(G * mse2))
         self.Gw = XtWX_inv
         self.gram = G
-        self.mse = mse
+        self.mse1 = mse1
+        self.mse2 = mse2
         self.beta = beta
-        self.se = se
+        self.se1 = se1
+        self.se2 = se2
         self.u = u
         self.w = w
         self.resids = resids
         self.dhist = dhist
+        self.scale = scale
         beta = linalg_utils._check_1d(beta)
-        res = np.vstack([beta, self.se, beta/self.se]).T
-        res = pd.DataFrame(res, columns=['beta', 'se', 't'],
+        res = np.vstack([beta, self.se1, self.se2, beta/self.se1]).T
+        res = pd.DataFrame(res, columns=['beta', 'se1', 'se2', 't'],
                            index=self.Xdf.columns)
         res['p'] = sp.stats.t.sf(np.abs(res['t']), n-p)
         self.res = res
