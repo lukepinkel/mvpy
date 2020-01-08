@@ -40,7 +40,7 @@ S = Lambda.dot(B).dot(Phi.values).dot(B.T).dot(Lambda.T.values)+Theta.values
 S.columns = S.index
 Beta.iloc[2, 1] = 1.0
 #Transposition required to get from the generative to the hypothesis matrix
-sem_mod = mv.SEMModel(Z, Lambda, Beta.T, Theta, Phi)
+sem_mod = mv.SEM(Z, Lambda, Beta.T, Theta, Phi)
 sem_mod.free[8:11] = 0.0
 sem_mod.params
 sem_mod.fit(method='ML')

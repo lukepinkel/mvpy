@@ -104,12 +104,12 @@ class ObjFuncML:
     
     def hessian(self, Sigma, G):
         Sigma_inv = np.linalg.pinv(Sigma)
-        ESE = Sigma_inv.dot(self.W - Sigma).dot(Sigma_inv)
+        ESE = Sigma_inv.dot(self.W).dot(Sigma_inv)
         V = np.kron(ESE, Sigma_inv) + np.kron(Sigma_inv, ESE)\
             -np.kron(Sigma_inv, Sigma_inv)
         V = self.D.T.dot(V).dot(self.D)
         
-        H = 2*G.T.dot(V).dot(G)
+        H =  -G.T.dot(V).dot(G)/2
         return H
     
     def test_stat(self, Sigma, n):
@@ -530,8 +530,9 @@ class SEM:
 
     
     def fit(self, method='ML', xtol=1e-20, gtol=1e-30, maxiter=3000, verbose=2,
-            constraints=(), use_hess=True):
+            constraints=(), use_hess=False):
         if use_hess:
+            
             hess = self.hessian
         else:
             hess = None

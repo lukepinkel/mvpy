@@ -36,7 +36,7 @@ Beta = pd.DataFrame([[0, 0, 0, 0],
 PH = Lambda.copy()
 TH = Lambda.copy()*0.0
 
-sem_model = mv.SEMModel(data, Lambda, Beta, PH=PH.values, TH=TH.values)
+sem_model = mv.SEM(data, Lambda, Beta, PH=PH.values, TH=TH.values)
 sem_model.fit()
 data = X.copy()
 
