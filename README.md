@@ -19,21 +19,16 @@ Currently includes rough implementations of
   - Canonical correlation
   - Sparse Canonical Correlation 
 - Structural equation modeling using ML, and GLS with normal, wishart, and adf weight matrices
-- Simple linear models
+- Linear models that implement a variety of univariate and multivariate hypothesis tests, and can implement MANOVA.
+- Robust linear regression with Hubers T, Tukeys Bisquare (Biweight), and Hampels function.
 - Generalized Linear Models 
-  - Poission, Gamma, and Bernoulli distributions
-  - Logit, Probit, Log, and Reciprocal links
+  - Supports Gaussian, Binomial, Gamma, Gaussian, Inverse Gaussian, Poisson and Negative Binomial distributions
+  - Supports Cloglog, Logit, Log, Log Complement, Probit, Negative Binomial and Reciprocal links.
 - Negative Binomial Models
   - Currently only supports NB2, although plans exist to implement other overdispersed count models 
-- Random correlation matrices via the vine method, onion method, or factor method
+- Random correlation matrix generation via the vine method, onion method, or factor method
 - Multivariate non-normal data with the ability to specify (standardized) third and fourth order moments. 
 ## Speed
 For most models, internal optimization is done using scipy's trust-constr, which is robust but fairly slow.  All models have an option to pass to another choice to the optimizer; a safe and quick alternative to use is trust-ncg. 
 ## Testing and Validity
 Although all of these have been tested against results published in the literature, or those obtained in R(in some cases transitively via statsmodels), they have not been tested systematically, and some of the code is very rough.
-
-The cumulative link model is planned to be subsumed by a GLM module, while the factor analytic methods, latent variable correlation methods, and structural equation models are planned to be implemented under a general latent variable model. 
-
-The partial least squares functions (generally with the exception of PLS-SEM) suffer from a variety of issues, and inconsistencies, as they were programmed with large gaps in between them, and PLSR, PLSC, and CCA may be subsumed by a more coherent model.
-
-Math outlining the basis and details of the implementation of multivariate mixed linear models can be viewed https://www.overleaf.com/read/kwfwwnsrybtk
