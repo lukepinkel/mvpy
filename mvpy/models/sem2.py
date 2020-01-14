@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Created on Mon Jan 13 22:34:27 2020
+
+@author: lukepinkel
+"""
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
 Created on Mon Oct  7 16:37:18 2019
 
 @author: lukepinkel
@@ -39,7 +47,7 @@ class ObjFuncQD:
         g = -2.0*G.T.dot(self.V).dot(d)
         return g
     
-    def hessian(self, Sigma, G):
+    def hessian(self, Sigma, G, *args):
         H = -2* G.T.dot(self.V).dot(G)
         return H
     
@@ -73,7 +81,7 @@ class ObjFuncTR:
         g = -2.0*G.T.dot(self.V).dot(d)
         return g
     
-    def hessian(self, Sigma, G):
+    def hessian(self, Sigma, G, *args):
         H = -2* G.T.dot(self.V).dot(G)
         return H
     def test_stat(self, Sigma, n):
@@ -102,15 +110,58 @@ class ObjFuncML:
         g = -G.T.dot(V).dot(d)
         return g
     
-    def hessian(self, Sigma, G):
-        Sigma_inv = np.linalg.pinv(Sigma)
-        ESE = Sigma_inv.dot(self.W).dot(Sigma_inv)
-        V = np.kron(ESE, Sigma_inv) + np.kron(Sigma_inv, ESE)\
-            -np.kron(Sigma_inv, Sigma_inv)
-        V = self.D.T.dot(V).dot(self.D)
+    
+    def _hij(self, LA, IB, PH, TH, i, j):
+        p, k = LA.shape
+        q = int(p * (p + 1) / 2)
+        t = int(k * (k + 1) / 2)
+        Ip = np.eye(p)
+        ei = Ip[:, i]
+        ej = Ip[:, j]
+        Eij = np.outer(ei, ej)
+        Tij = Eij + Eij.T
+        AB = LA.dot(IB)
+        TijAB = Tij.dot(AB)
+        BPBt = IB.dot(PH).dot(IB.T)
+        ABPBt = LA.dot(BPBt)
+        ABTBA = AB.T.dot(Tij).dot(AB)
+        Q = ABPBt.T.dot(TijAB)
+        Dk, Kp = linalg_utils.dmat(k), linalg_utils.kmat(p, k)
+        Kk = linalg_utils.kmat(k, k)
+        H_LA_LA = np.kron(BPBt, Tij) # 11
+        H_LA_BE = -np.kron(BPBt, TijAB)-Kp.dot(np.kron(Tij.dot(ABPBt), IB)) # 12
+        H_LA_PH = np.kron(IB, TijAB).dot(Dk) # 13
+        H_LA_TH = np.zeros((p * k, q)) #14
+        H_BE_BE = np.kron(Q, IB.T).dot(Kk) + Kk.dot(np.kron(Q.T, IB)) \
+                  + np.kron(BPBt, ABTBA)  #22
+        H_BE_PH = (-Dk.T.dot(np.kron(IB.T, ABTBA))).T #23 
+        H_BE_TH = np.zeros((k*k, q)) # 24
+        H_PH_PH = np.zeros((t, t)) # 33
+        H_PH_TH = np.zeros((t, q)) #34
+        H_TH_TH = np.zeros((q, q)) #44
         
-        H =  -G.T.dot(V).dot(G)/2
+        H = np.block([[H_LA_LA  , H_LA_BE  , H_LA_PH  , H_LA_TH],
+                      [H_LA_BE.T, H_BE_BE  , H_BE_PH  , H_BE_TH],
+                      [H_LA_PH.T, H_BE_PH.T, H_PH_PH  , H_PH_TH],
+                      [H_LA_TH.T, H_BE_TH.T, H_PH_TH.T, H_TH_TH]])
+        
         return H
+        
+    def hessian(self, Sigma, G, LA, IB, PH, TH):
+        Sinv = np.linalg.pinv(Sigma)
+        p = Sinv.shape[0]
+        Dp = self.D
+        W = 0.5 * Dp.T.dot(np.kron(Sinv, Sinv)).dot(Dp)
+        d = linalg_utils.vech(self.W-Sigma).dot(W)
+        H1 = G.T.dot(W).dot(G)
+        H2 = G.T.dot(Dp.T).dot(np.kron(Sinv, 
+                    Sinv.dot(self.W-Sigma).dot(Sinv))).dot(Dp).dot(G)
+        H3 = 0.0
+        for i, r in enumerate(list(zip(*np.triu_indices(p)))):
+            Hij = self._hij(LA, IB, PH, TH, r[0], r[1])
+            H3 += d[i] * Hij
+        Hess = 2.0 * (H1 + H2 - H3)
+        return -Hess
     
     def test_stat(self, Sigma, n):
         t =  self.func(Sigma) - np.linalg.slogdet(self.W)[1] - Sigma.shape[0]
@@ -464,9 +515,14 @@ class SEM:
     
     def hessian(self, free):
         free = linalg_utils._check_1d(free)
+        params = self.params.copy()
+        if free.dtype==complex:
+            params = params.astype(complex)
+        params[self.idx] = free
+        LA, BE, IB, PH, TH = self.get_mats(params)
         Sigma = self.get_sigma(free)
         G = self.dsigma(free)
-        H =  self._obj_func.hessian(Sigma, G)
+        H =  self._obj_func.hessian(Sigma, G, LA, IB, PH, TH)
         H = H[self.idx][:, self.idx]
         return -H
         
@@ -798,6 +854,63 @@ modeltr.fit()
 qr_error =  np.mean((modelqd.free-free)**2)**0.5
 ml_error =  np.mean((modelml.free-free)**2)**0.5
 tr_error =  np.mean((modeltr.free-free)**2)**0.5
+
+Full hessian shoud look like 
+
+def Hessij(LA, BE, IB, PH, TH, i, j):
+    p, k = LA.shape
+    I = np.eye(p)
+    Eij = np.outer(I[:, i], I[:, j])
+    Tij = Eij + Eij.T
+    D = mv.dmat(k)
+    K = mv.kmat(p, k)
+    Kr = mv.kmat(k, k)
+    Q0 = np.linalg.multi_dot([IB, PH, IB.T])
+    Q1 = np.linalg.multi_dot([Tij, LA, IB])
+    Q2 = np.linalg.multi_dot([Tij, LA, Q0])
+    Q3 = np.linalg.multi_dot([IB.T, LA.T, Tij, LA, IB])
+    Q4 = np.linalg.multi_dot([IB, PH, Q3])
+    Q5 = Q4.T
+    
+    H11 = np.kron(Q0, Tij)
+    H12 = np.kron(IB, Q1).dot(D)
+    H13 = -np.kron(Q0, Q1) - K.dot(np.kron(Q2, IB))
+    H23 = -D.T.dot(np.kron(IB.T, Q3))
+    H33 = np.kron(Q4, IB.T).dot(Kr) + Kr.dot(np.kron(Q5, IB)) + np.kron(Q0, Q3)
+    H22 = np.zeros((H23.shape[0], H12.shape[1]))
+    H14 = np.zeros((H11.shape[0], int(0.5*p * (p+1))))
+    H24 = np.zeros((H22.shape[0], int(0.5*p * (p+1))))
+    H34 = np.zeros((H33.shape[0], int(0.5*p * (p+1))))
+    H44 = np.zeros((int(0.5*p * (p+1)), int(0.5*p * (p+1))))
+    R1 = np.block([H11  ,  H12  , H13,   H14])
+    R2 = np.block([H12.T,  H22  , H23,   H24])
+    R3 = np.block([H13.T,  H23.T, H33,   H34])
+    R4 = np.block([H14.T,  H24.T, H34.T, H44])
+    
+    Hij = np.concatenate([R1, R2, R3, R4])
+    return Hij
+
+
+Hij = Hessij(LA, BE, IB, PH, TH, 0, 0)
+Hij = Hij[idx][:, idx]
+
+s, r = mv.vech(mod.S), mv.vech(Sigma)
+d = s - r
+dW = d.dot(W)
+H = np.zeros((G.shape[1], G.shape[1]))
+rix = list(zip(*np.triu_indices(S.shape[0])))
+for i, rix_ij in enumerate(rix):
+    Hij = Hessij(LA, BE, IB, PH, TH, rix_ij[0], rix_ij[1])[idx][:, idx]
+    H += dW[i] * Hij
+
+
+
+U = np.kron(Sinv, Sinv.dot(S-Sigma).dot(Sinv))
+V = G.T.dot(D.T.dot(U).dot(D)).dot(G)
+
+H = 2 * (G.T.dot(W).dot(G) - H) + 2 * V
+
+
 
 
 
