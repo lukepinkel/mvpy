@@ -160,7 +160,7 @@ class ObjFuncML:
         for i, r in enumerate(list(zip(*np.triu_indices(p)))):
             Hij = self._hij(LA, IB, PH, TH, r[0], r[1])
             H3 += d[i] * Hij
-        Hess = 2.0 * (H1 + H2 - H3)
+        Hess = 2 * (H1 + H3) + H2
         return -Hess
     
     def test_stat(self, Sigma, n):
