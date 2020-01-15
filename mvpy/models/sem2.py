@@ -154,14 +154,14 @@ class ObjFuncML:
         W = 0.5 * Dp.T.dot(np.kron(Sinv, Sinv)).dot(Dp)
         d = linalg_utils.vech(self.W-Sigma).dot(W)
         H1 = G.T.dot(W).dot(G)
-        H2 = G.T.dot(Dp.T).dot(np.kron(Sinv, 
+        H2 = 2.0*G.T.dot(Dp.T).dot(np.kron(Sinv, 
                     Sinv.dot(self.W-Sigma).dot(Sinv))).dot(Dp).dot(G)
         H3 = 0.0
         for i, r in enumerate(list(zip(*np.triu_indices(p)))):
             Hij = self._hij(LA, IB, PH, TH, r[0], r[1])
             H3 += d[i] * Hij
         Hess = 2 * (H1 + H3) + H2
-        return -Hess
+        return -Hess/2
     
     def test_stat(self, Sigma, n):
         t =  self.func(Sigma) - np.linalg.slogdet(self.W)[1] - Sigma.shape[0]
