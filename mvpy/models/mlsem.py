@@ -373,16 +373,19 @@ class MLSEM:
         
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
         self.res['p'] = sp.stats.t.sf(abs(self.res['t']), self.n_obs)
+        self._goodness_of_fit()
 
     def _goodness_of_fit(self):
         SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
         GFI = statfunc_utils.gfi(self.Sigma, self.S)
-        LL = self.test_stat
+        LL = (self.loglike(self.free) - self._llc) * (self.n_obs)/2 \
+             + self.n_obs * self.p * np.log(2*np.pi) / 2.0
         test_stat = self.test_stat
-        AIC = 2*len(self.free)-2*LL
-        BIC = len(self.free)*np.log(self.n_obs)-2*LL
+        AIC = 2*len(self.free)+2*LL
+        BIC = len(self.free)*np.log(self.n_obs)+2*LL
         Sb = np.diag(np.diag(self.S))
-        tbase = np.linalg.slogdet(Sb)[1] + np.trace(self.S.dot(np.linalg.inv(Sb)))
+        tbase = (np.linalg.slogdet(Sb)[1] \
+                + np.trace(self.S.dot(np.linalg.inv(Sb)))) * (self.n_obs - 1)
         NFI1 = (tbase - test_stat) / tbase
         dfm = len(self.free) 
         dfb = self.S.shape[0] 
@@ -397,6 +400,7 @@ class MLSEM:
         else:
             AGFI, st_chi2, RMSEA = None, None, None
         rsquared = 1 - np.diag(self.TH) / np.diag(self.S)
+        self.LL = LL
         self.rsquared = pd.DataFrame(rsquared, index=self.zcols)
         self.r2total = 1 - np.linalg.det(self.TH) / np.linalg.det(self.S)
         self.sumstats = pd.DataFrame([[AGFI, '-'],
