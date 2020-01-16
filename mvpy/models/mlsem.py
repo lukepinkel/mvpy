@@ -374,5 +374,50 @@ class MLSEM:
         self.res['t'] = self.res['Coefs'] / self.res['SE1']
         self.res['p'] = sp.stats.t.sf(abs(self.res['t']), self.n_obs)
 
+    def _goodness_of_fit(self):
+        SRMR = statfunc_utils.srmr(self.Sigma, self.S, self.df)
+        GFI = statfunc_utils.gfi(self.Sigma, self.S)
+        LL = self.test_stat
+        test_stat = self.test_stat
+        AIC = 2*len(self.free)-2*LL
+        BIC = len(self.free)*np.log(self.n_obs)-2*LL
+        Sb = np.diag(np.diag(self.S))
+        tbase = np.linalg.slogdet(Sb)[1] + np.trace(self.S.dot(np.linalg.inv(Sb)))
+        NFI1 = (tbase - test_stat) / tbase
+        dfm = len(self.free) 
+        dfb = self.S.shape[0] 
+        NFI2 = (tbase - test_stat) / (tbase - dfm)
+        RhoFI1 = (tbase/dfb - test_stat/dfm) / (tbase/dfb)
+        RhoFI2 = (tbase/dfb - test_stat/dfm)/(tbase/dfb-1)
+        if self.df!=0:
+            AGFI = statfunc_utils.agfi(self.Sigma, self.S, self.df)
+            st_chi2 = (test_stat - self.df) / np.sqrt(2*self.df)
+            RMSEA = np.sqrt(np.maximum(self.test_stat-self.df, 
+                                     0)/(self.df*self.n_obs-1)) 
+        else:
+            AGFI, st_chi2, RMSEA = None, None, None
+        rsquared = 1 - np.diag(self.TH) / np.diag(self.S)
+        self.rsquared = pd.DataFrame(rsquared, index=self.zcols)
+        self.r2total = 1 - np.linalg.det(self.TH) / np.linalg.det(self.S)
+        self.sumstats = pd.DataFrame([[AGFI, '-'],
+                                      [AIC, '-'],
+                                      [BIC, '-'],
+                                      [GFI, '-'],
+                                      [NFI1, '-'],
+                                      [NFI2, '-'],
+                                      [RhoFI1, '-'],
+                                      [RhoFI2, '-'],
+                                      [RMSEA, '-'],
+                                      [SRMR, '-'],
+                                      [test_stat, self.test_pval],
+                                      [self.t_robust, self.robust_pval],
+                                      [st_chi2, '-']
+                                      ])
+        self.sumstats.index = ['AGFI', 'AIC', 'BIC', 'GFI', 'NFI1', 
+                               'NFI2', 'RhoFI1', 'RhoFI2', 'RMSEA', 'SRMR',
+                               'chi2', 'chi2_robust', 'chi2_standard']
+        self.sumstats.columns=['Goodness_of_fit', 'P value']
+        
+        
         
         
