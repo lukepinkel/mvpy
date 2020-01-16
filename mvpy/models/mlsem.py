@@ -7,6 +7,9 @@ import collections#analysis:ignore
 from ..utils import linalg_utils, base_utils, statfunc_utils #analysis:ignore
 
 class MLSEM:
+    """
+    A little sloppy, but the hessian is finally correct for the full ML model
+    """
  
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0, fit_func='ML',
                  wmat='normal'):
@@ -267,7 +270,7 @@ class MLSEM:
         H1 = self._hessian_a(Sigma, Sinv, G)[self.idx][:, self.idx]
         H2 = self._hessian_b(Sigma, Sinv, G)[self.idx][:, self.idx]
         H3 = self._hessian_c(Sigma, Sinv, G, LA, IB, PH)
-        H = 2.0 * (H1 - H3) + H2
+        H = H1 + H2 - H3/2
         return H
         
     

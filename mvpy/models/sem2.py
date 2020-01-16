@@ -260,7 +260,7 @@ def parse_formula(mod, columns, rcorr=None):
 
 
 
-class SEM:
+class GLSSEM:
     """
     Structural Equation Model
     
