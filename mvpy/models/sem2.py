@@ -1,16 +1,8 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 13 22:34:27 2020
-
-@author: lukepinkel
-"""
 
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Mon Oct  7 16:37:18 2019
-
 @author: lukepinkel
 """
 import pandas as pd#analysis:ignore
@@ -682,7 +674,6 @@ class SEM:
 data = pd.read_csv("/users/lukepinkel/Downloads/bollen.csv", index_col=0)
 data = data[['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'y4', 'y5',
              'y6', 'y7', 'y8', ]]
-
 L = np.array([[1, 0, 0],
               [1, 0, 0],
               [1, 0, 0],
@@ -694,7 +685,6 @@ L = np.array([[1, 0, 0],
               [0, 0, 1],
               [0, 0, 1],
               [0, 0, 1]])
-
 B = np.array([[False, False, False],
               [True,  False, False],
               [True,  True, False]])
@@ -702,8 +692,6 @@ LA = pd.DataFrame(L, index=data.columns, columns=['ind60', 'dem60', 'dem65'])
 BE = pd.DataFrame(B, index=LA.columns, columns=LA.columns)
 S = data.cov()
 Zg = ZR = data
-
-
 Lambda=LA!=0
 Beta=BE!=0 
 Lambda, Beta = pd.DataFrame(Lambda), pd.DataFrame(Beta)
@@ -711,7 +699,6 @@ Lambda.columns = ['ind60', 'dem60', 'dem65']
 Lambda.index = Zg.columns
 Beta.columns = Lambda.columns
 Beta.index = Lambda.columns
-
 Theta = pd.DataFrame(np.eye(Lambda.shape[0]),
                      index=Lambda.index, columns=Lambda.index)
 Theta.loc['y1', 'y5'] = 0.05
@@ -720,49 +707,32 @@ Theta.loc['y2', 'y6'] = 0.05
 Theta.loc['y3', 'y7'] = 0.05
 Theta.loc['y4', 'y8'] = 0.05
 Theta.loc['y6', 'y8'] = 0.05
-
 Theta.loc['y5', 'y1'] = 0.05
 Theta.loc['y4', 'y2'] = 0.05
 Theta.loc['y6', 'y2'] = 0.05
 Theta.loc['y7', 'y3'] = 0.05
 Theta.loc['y8', 'y4'] = 0.05
 Theta.loc['y8', 'y6'] = 0.05
-
-
   
 model1 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='ML', wmat='normal')
 model1.fit()   
-
 model2 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='ML', wmat='wishart')
 model2.fit()
-
-
 model3 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='QD', wmat='wishart')
 model3.fit()   
-
-
 model4 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='QD', wmat='normal')
 model4.fit()   
-
-
 model5 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='QD', wmat='adf')
 model5.fit()   
-
-
 model6 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='TR', wmat='wishart')
 model6.fit()   
-
-
 model7 = SEM(Zg, Lambda, Beta, Theta.values, fit_func='TR', wmat='normal')
 model7.fit()   
-
 res = pd.DataFrame(np.zeros((6, 7)), columns=['Function', 'Dist',
                    'SRMR', 'RMSEA', 'chi2', 'GFI', 'AGFI'])
-
 ff1 = ['ML', 'ML', 'QD', 'QD', 'QD', 'TR', 'TR']
 ff2 = ['norma', 'wishart', 'wishart', 'normal', 'adf', 'wishart', 'normal']
 md = [model1, model2, model3, model4, model5, model6, model7]
-
 for i in range(6):
     res.iloc[i, 0] = ff1[i]
     res.iloc[i, 1] = ff2[i]
@@ -778,21 +748,16 @@ model4.SRMR
 model5.SRMR
 model6.SRMR
 model7.SRMR
-
 import mvpy.api as mv
 import timeit
-
 Lambda = np.zeros((15, 5))
 Lambda[0, 0] = 1.0
 Lambda[1, 0] = 0.5
 Lambda[2, 0] = 2.0
-
 Lambda[3:6, 1] = 1.0
 Lambda[6:9, 2] = 1.0
 Lambda[9:12, 3] = 1.0
 Lambda[12:15, 4] = 1.0
-
-
 Beta = np.zeros((5, 5))
 Beta[1, 0] = 1.0
 Beta[2, 0] = 0.5
@@ -801,8 +766,6 @@ Beta[3, 1] = 0.5
 Beta[3, 2] = 1.0
 Beta[4, 2] = -.5
 Beta[4, 3] = 1.0
-
-
 Beta = Beta.T
 IB = np.linalg.pinv(linalg_utils.mat_rconj(Beta))
 Phi = np.diag(np.arange(5, 0, -1))
@@ -823,40 +786,27 @@ Lambda = pd.DataFrame(Lambda, index=Z.columns, columns=['lv%i'%i for i in range(
 Beta = pd.DataFrame(Beta!=0, index=Lambda.columns, columns=Lambda.columns)
 model = SEM(Z, Lambda, Beta, TH)
 model.fit()
-
 modelqdadf = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='adf')
 modelqdadf.fit(maxiter=10000, xtol=1e-4, gtol=1e-5)
-
 modelqd = SEM(Z, Lambda, Beta, TH, fit_func='QD', wmat='wishart')
 modelqd.fit(maxiter=10000, xtol=1e-4, gtol=1e-5)
-
-
-
 modelml = SEM(Z, Lambda, Beta, TH, fit_func='ML', wmat='wishart')
 modelml.fit()
-
-
 modeltr = SEM(Z, Lambda, Beta, TH, fit_func='TR', wmat='wishart')
 modeltr.fit()
-
 %timeit modelqd.obj_func(modelqd.free) #174 µs
 %timeit modelml.obj_func(modelml.free) #266 µs
 %timeit modeltr.obj_func(modeltr.free) #153 µs
-
 %timeit modelqd.gradient(modelqd.free) #850 µs
 %timeit modelml.gradient(modelml.free) #1.2 ms 
 %timeit modeltr.gradient(modeltr.free) #820 µs
-
 %timeit modelqd.hessian(modelqd.free) #904 µs
 %timeit modelml.hessian(modelml.free) #1.58 ms 
 %timeit modeltr.hessian(modeltr.free) #897 µs
-
 qr_error =  np.mean((modelqd.free-free)**2)**0.5
 ml_error =  np.mean((modelml.free-free)**2)**0.5
 tr_error =  np.mean((modeltr.free-free)**2)**0.5
-
 Full hessian shoud look like 
-
 def Hessij(LA, BE, IB, PH, TH, i, j):
     p, k = LA.shape
     I = np.eye(p)
@@ -889,11 +839,8 @@ def Hessij(LA, BE, IB, PH, TH, i, j):
     
     Hij = np.concatenate([R1, R2, R3, R4])
     return Hij
-
-
 Hij = Hessij(LA, BE, IB, PH, TH, 0, 0)
 Hij = Hij[idx][:, idx]
-
 s, r = mv.vech(mod.S), mv.vech(Sigma)
 d = s - r
 dW = d.dot(W)
@@ -902,19 +849,7 @@ rix = list(zip(*np.triu_indices(S.shape[0])))
 for i, rix_ij in enumerate(rix):
     Hij = Hessij(LA, BE, IB, PH, TH, rix_ij[0], rix_ij[1])[idx][:, idx]
     H += dW[i] * Hij
-
-
-
 U = np.kron(Sinv, Sinv.dot(S-Sigma).dot(Sinv))
 V = G.T.dot(D.T.dot(U).dot(D)).dot(G)
-
 H = 2 * (G.T.dot(W).dot(G) - H) + 2 * V
-
-
-
-
-
 '''
-
-
-
