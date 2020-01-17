@@ -9,6 +9,36 @@ from ..utils import linalg_utils, base_utils, statfunc_utils #analysis:ignore
 class MLSEM:
     """
     A little sloppy, but the hessian is finally correct for the full ML model
+    Structural Equation Model
+    
+    The class is initialized with 2 Stage Least Squares parameter estimates,
+    as the newton-raphson optimization is quite sensitive to starting values.
+    
+    Parameters
+    ----------
+    Z : DataFrame
+        Pandas DataFrame whose rows and columns correspond to observations
+        and variables, respectively.
+    LA : DataFrame
+        Lambda, the loadings matrix that specifies which variables load onto
+        the latent variables.  For a path model(i.e. no measurement model)
+        this can just be the identity matrix
+    BE: DataFrame
+        Beta, the matrix that specifies the structural relationships.  
+        Due to a suboptimality somewhere in the code, this does not exactly
+        reflect the matrix one would expect based off of a generative model,
+        and so each (i, j) element, which may be either boolean(True or False)
+        or binary (1, 0), specifies that variable i is explaining some variance
+        in variable j(i.e. i-->j)
+    TH: DataFrame
+        Theta, the measurement model error covariance matrix, analogous
+        to the uniqueness in factor analysis, except orthogonality is not
+        necessary
+    PH: DataFrame
+        Phi, the latent variable covariance matrix,  
+    phk: numeric
+        Factor by which to divide the 2SLS estimate of Phi by
+    
     """
  
     def __init__(self, Z, LA, BE, TH=None, PH=None, phk=2.0, fit_func='ML',
