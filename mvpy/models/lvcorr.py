@@ -359,8 +359,9 @@ class Polyserial:
         return g.sum()
     
     def hessian(self, r):
-        H = sp.optimize.approx_fprime(np.atleast_1d(0.1), 
-                                  self.gradient, np.finfo(1.0).eps**(1/3))
+        H = sp.optimize.approx_fprime(np.atleast_1d(r), 
+                                      self.gradient, 
+                                      np.finfo(1.0).eps**(1/3))
         return H
     
     
