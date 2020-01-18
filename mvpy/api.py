@@ -31,7 +31,7 @@ from mvpy.models.clm import CLM#analysis:ignore
 from mvpy.models.factor_analysis import EFA, CFA, FactorAnalysis#analysis:ignore
 from mvpy.models.lmm import LMM#analysis:ignore
 from mvpy.models.lvcorr import (polychorr, polyserial, tetra, mixed_corr, Polychoric,#analysis:ignore
-                                )#analysis:ignore
+                                Polyserial)#analysis:ignore
 from mvpy.models.lm import LM, OLS, MassUnivariate, RLS, Huber, Bisquare#analysis:ignore
 from mvpy.models.glm3 import (GLM, Binomial, Gamma, Gaussian, InverseGaussian, #analysis:ignore
                                Poisson,#analysis:ignore
