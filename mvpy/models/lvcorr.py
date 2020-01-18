@@ -11,7 +11,8 @@ import pandas as pd
 import scipy as sp
 import scipy.optimize
 
-from ..utils.linalg_utils import _check_1d
+from ..utils import linalg_utils, statfunc_utils
+from ..utils.linalg_utils import _check_1d, _check_0d
 from ..utils.base_utils import check_type, corr
 from ..utils.statfunc_utils import (norm_qtf, polyserial_ll,
                                     polychor_thresh, polychor_ll, polychor_partial_ll)
@@ -117,10 +118,10 @@ def polyserial(x, y):
     tau = norm_qtf(marginal_counts.cumsum()/marginal_counts.sum())
     tau = np.concatenate([[-np.inf], tau])
     
-        
+    x, y = _check_1d(x), _check_1d(y)   
     res = sp.optimize.minimize(polyserial_ll, x0=(corr(x, y)), args=(x, y, tau, order),
                    method='Nelder-Mead')
-    rho_hat=res.x
+    rho_hat=_check_0d(res.x)
     if (x_is_pd | y_is_pd):
         if type(xcols) is not str:
             xcols = xcols[0]
@@ -171,6 +172,219 @@ def mixed_corr(data, var_types=None):
                 
        
 
+class Polychoric:
+    
+    def __init__(self, x=None, y=None, df=None):
+        if (x is None) and (y is None):
+            df = linalg_utils._check_np(df)
+            x, y= df[:, 0], df[:, 1]
+        else:
+            if type(x) in [float, int, str]:
+                x = linalg_utils._check_np(df[x])
+            else:
+                x = linalg_utils._check_np(x)
+                
+                
+            if type(y) in [float, int, str]:
+                y = linalg_utils._check_np(df[y])
+            else:
+                y = linalg_utils._check_np(y)
+        
+        xtab = pd.crosstab(x, y).values
+        p, q = xtab.shape
+        vecx = linalg_utils.vec(xtab)
+        a, b = statfunc_utils.polychor_thresh(xtab)
+        
+        ixi, ixj = np.meshgrid(np.arange(1, p+1), np.arange(1, q+1))
+        ixi1, ixj1 = ixi.flatten(), ixj.flatten()
+        ixi2, ixj2 = ixi1 - 1, ixj1 - 1
+        
+        self.a, self.b = a, b
+        self.ixi1, self.ixi2 = ixi1, ixi2
+        self.ixj1, self.ixj2 = ixj1, ixj2
+        self.xtab, self.vecx = xtab, vecx
+        self.a1, self.a2 = a[ixi1], a[ixi2]
+        self.b1, self.b2 = b[ixj1], b[ixj2]
+        self.x, self.p, self.y, self.q = x, p, y, q
+    
+    def prob(self, r):
+        p = statfunc_utils.binorm_cdf(self.a1, self.b1, r) \
+            - statfunc_utils.binorm_cdf(self.a2, self.b1, r)\
+            - statfunc_utils.binorm_cdf(self.a1, self.b2, r)\
+            + statfunc_utils.binorm_cdf(self.a2, self.b2, r)
+        return p
+    
+    def dprob(self, r):
+        p = statfunc_utils.binorm_pdf(self.a1, self.b1, r) \
+            - statfunc_utils.binorm_pdf(self.a2, self.b1, r)\
+            - statfunc_utils.binorm_pdf(self.a1, self.b2, r)\
+            + statfunc_utils.binorm_pdf(self.a2, self.b2, r)
+        return p
+    
+    def _dphi(self, a, b, r):
+        xy, x2, y2 = a * b, a**2, b**2
+        r2 = r**2
+        s = (1 - r2)
+        
+        u1 = x2 / (2 * s)
+        u2 = r*xy / s
+        u3 = y2 / (2 * s)
+        
+        num1 = np.exp(-u1 + u2 - u3)
+        num2 = r**3 - r2*xy + r*x2 + r*y2 - r - xy
+        num = num1 * num2
+        den = 2*np.pi*(r-1)*(r+1)*np.sqrt(s**3)
+        g = num / den
+        return g
+     
+    def gfunc(self, r):
+        g = self._dphi(self.a1, self.b1, r)\
+            -self._dphi(self.a2, self.b1, r)\
+            -self._dphi(self.a1, self.b2, r)\
+            +self._dphi(self.a2, self.b2, r)
+        return g
+  
+    def loglike(self, r):
+        p = self.prob(r)
+        p = np.maximum(p, 1e-16)
+        return -np.sum(self.vecx * np.log(p))
+    
+    def gradient(self, r):
+        p = self.prob(r)
+        dp = self.dprob(r)
+        
+        p = np.maximum(p, 1e-16)
+        
+        ll = -np.sum(self.vecx / p * dp)
+        return ll
+    
+    def hessian(self, r):
+        prb = self.prob(r)
+        phi = self.dprob(r)
+        gfn = self.gfunc(r)
+        
+        u = self.vecx / prb
+        v = self.vecx / (prb**2)
+        
+        H = u * gfn - v * phi**2
+        return -np.sum(H)
+    
+    def fit(self, verbose=0):
+        bounds =[(-1.0+1e-16, 1.0-1e-16)]
+        x0 = np.atleast_1d(np.corrcoef(self.x, self.y)[0, 1])
+        opt = sp.optimize.minimize(self.loglike, x0, jac=self.gradient,
+                                   hess=self.hessian, bounds = bounds,
+                                   options=dict(verbose=verbose),
+                                   method='trust-constr',)
+        self.optimizer = opt
+        self.rho_hat = opt.x[0]
+        self.observed_information = self.hessian(self.rho_hat)
+        self.se_rho = np.sqrt(1.0 / self.observed_information)
+
+
+
+
+                
+
+def dcrep(arr, dic):
+    keys = np.array(list(dic.keys()))
+    dicv = np.array(list(dic.values()))
+    indx = keys.argsort()
+    yv = dicv[indx[np.searchsorted(keys,arr.copy(),sorter=indx)]]
+    return yv
+
+
+
+class Polyserial:
+    
+    def __init__(self, x=None, y=None, df=None):
+        if (x is None) and (y is None):
+            df = linalg_utils._check_np(df)
+            x, y= df[:, 0], df[:, 1]
+        else:
+            if type(x) in [float, int, str]:
+                x = linalg_utils._check_np(df[x])
+            else:
+                x = linalg_utils._check_np(x)
+                
+                
+            if type(y) in [float, int, str]:
+                y = linalg_utils._check_np(df[y])
+            else:
+                y = linalg_utils._check_np(y)
+        
+        order = dict(zip(np.unique(y), np.unique(y).argsort()))
+        marginal_counts = np.array([np.sum(y==z) for z in np.unique(y)]).astype(float)
+        tau_arr = statfunc_utils.norm_qtf(marginal_counts.cumsum()/marginal_counts.sum())
+        tau_arr = np.concatenate([[-np.inf], tau_arr])
+        tau_dict = dict(zip(list(order.values())+[list(order.values())[-1]+1], 
+                            tau_arr.tolist()))
+        y_ordered = dcrep(y, order)
+        tau1, tau2 = dcrep(y_ordered, tau_dict),  dcrep(y_ordered+1, tau_dict)
+        self.order, self.marginal_counts = order, marginal_counts
+        self.tau_arr, self.y_ordered = tau_arr, y_ordered
+        self.tau1, self.tau2 = tau1, tau2
+        self.x, self.y = x, y
+        
+       
+        
+    def prob(self, r):
+        tau1, tau2 = self.tau1, self.tau2
+        th1 = statfunc_utils.polyex(self.x, tau1, r)
+        th2 = statfunc_utils.polyex(self.x, tau2, r)
+        p = statfunc_utils.norm_cdf(th2) - statfunc_utils.norm_cdf(th1)
+        return p
+    
+    def loglike(self, r):
+        ll = -np.sum(np.log(self.prob(r)))
+        return ll
+    
+    def gradient(self, r):
+        tau1, tau2, x = self.tau1, self.tau2, self.x
+        th1 = statfunc_utils.polyex(self.x, tau1, r)
+        th2 = statfunc_utils.polyex(self.x, tau2, r)
+    
+        tmp1 = tau1.copy()
+        tmp1[tmp1<-1e12] = 0.0
+        
+        tmp2 = tau2.copy()
+        tmp2[tmp2>1e12] = 0.0
+        u = statfunc_utils.norm_pdf(th2) * (tmp2 * r  - x)
+        v = statfunc_utils.norm_pdf(th1) * (tmp1 * r  - x)
+        
+        
+        p = self.prob(r)
+        
+        g = -1.0 /  (p * np.sqrt((1 - r**2)**3)) * (u - v)
+        return g.sum()
+    
+    def hessian(self, r):
+        H = sp.optimize.approx_fprime(np.atleast_1d(0.1), 
+                                  self.gradient, np.finfo(1.0).eps**(1/3))
+        return H
+    
+    
+    def fit(self, verbose=0):
+        bounds =[(-1.0+1e-16, 1.0-1e-16)]
+        x0 = np.atleast_1d(np.corrcoef(self.x, self.y)[0, 1])
+        opt = sp.optimize.minimize(self.loglike, x0, jac=self.gradient,
+                                   options=dict(verbose=verbose),
+                                   method='trust-constr',
+                                   bounds = bounds)
+        self.optimizer = opt
+        self.rho_hat = opt.x[0]
+        self.observed_information = self.hessian(self.rho_hat)
+        self.se_rho = np.sqrt(1.0 / self.observed_information)
+
+
+        
+        
+        
+        
+    
+                
+        
+    
 
 
 
