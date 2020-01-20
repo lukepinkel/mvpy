@@ -9,6 +9,7 @@ Created on Wed Sep 11 19:04:52 2019
 import numpy as np
 import pandas as pd
 import scipy as sp
+import scipy.stats
 from ..utils import linalg_utils, base_utils
 
 
@@ -91,25 +92,23 @@ def vine_corr(d, betaparams=10):
     return S
 
  
-def onion_corr(d, betaparams=5):
-    S = np.eye(d)
-    S[0, 1] = 2*np.random.beta(betaparams, betaparams)-1.0
-    S[1, 0] = S[0, 1]
-    r = S[:2, :2]
-    for k in range(2, d-1):
-        y = np.sqrt(np.random.beta(k/2.0, betaparams))
-        u = np.random.rand(k)
-        u /= np.linalg.norm(u)
-        u *= y
-        A = np.linalg.cholesky(r)
-        z = A.dot(u)[:, None]
-        r = np.block([[r, z], [z.T, np.ones((1, 1))]])
-    S = r
-    u, V = linalg_utils.sorted_eigh(S)
-    umin = np.min(u[u>0])
-    u[u<0] = [umin*0.5**(float(i+1)/len(u[u<0])) for i in range(len(u[u<0]))]
-    S = linalg_utils.mdot([V, np.diag(u), V.T])
-    S = linalg_utils.normalize_diag(S)
+def onion_corr(d, betaparams=10):
+    beta = betaparams + (d - 2) / 2
+    norm_dist = sp.stats.norm()
+    u = sp.stats.beta(beta, beta).rvs()
+    r12 = 2 * u  - 1
+    S = np.array([[1, r12], [r12, 1]])
+    I = np.atleast_1d(1.0)
+    for i in range(3, d+1):
+        beta -= 0.5
+        r = np.sqrt(sp.stats.beta((i - 1) / 2, beta).rvs())
+        theta = norm_dist.rvs((i-1, 1))
+        theta/= np.linalg.norm(theta)
+        w = r * theta
+        u, V = np.linalg.eig(S)
+        R = (V * np.sqrt(u)).dot(V.T)
+        q = R.dot(w)
+        S = np.block([[S, q], [q.T, I]])
     return S
         
 
