@@ -97,6 +97,8 @@ lmm.fit(hess_opt=True)
 %timeit lmm.gradient(lmm.theta)
 %timeit lmm.hessian(lmm.theta)
 """
+
+
 sns.set_style('darkgrid')
 sns.jointplot(lmm.Z.dot(lmm.u)[:, 0], u, stat_func=sp.stats.pearsonr,
               kind='reg')
@@ -104,7 +106,7 @@ sns.jointplot(lmm.Z.dot(lmm.u)[:, 0], u, stat_func=sp.stats.pearsonr,
 theta = lmm.params
 
 np.sum(theta[0]+theta[1])/np.sum(theta)
-
+#Not sure if the delta method is valid here??
 def hfunc(theta):
     u = np.zeros(4)
     u[:2] = 0.5
