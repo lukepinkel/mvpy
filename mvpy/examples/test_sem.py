@@ -1,67 +1,57 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sat Sep 14 19:27:43 2019
+Created on Thu Jan 16 12:34:10 2020
 
 @author: lukepinkel
 """
 
-from mvpy.api import SEM
-import pandas as pd
 import numpy as np
+import pandas as pd
+import mvpy.api as mv
+import importlib
+importlib.reload(mv)
+pd.set_option('display.expand_frame_repr', False)
+vechS = [2.926, 1.390, 1.698, 1.628, 1.240, 0.592, 0.929,
+         0.659, 4.257, 2.781, 2.437, 0.789, 1.890, 1.278, 0.949,
+         4.536, 2.979, 0.903, 1.419, 1.900, 1.731, 5.605, 1.278, 1.004,
+         1.000, 2.420, 3.208, 1.706, 1.567, 0.988, 3.994, 1.654, 1.170,
+         3.583, 1.146, 3.649]
 
-data = pd.read_csv(("https://raw.githubusercontent.com/vincentarelbundock/Rdatasets"
-                "/master/csv/sem/Bollen.csv"), index_col=0)
-data = data[['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'y4', 'y5',
-             'y6', 'y7', 'y8', ]]
+S = pd.DataFrame(mv.invech(np.array(vechS)), columns=['anti1', 'anti2',
+                 'anti3', 'anti4', 'dep1', 'dep2', 'dep3', 'dep4'])
+S.index = S.columns
 
-L = np.array([[1, 0, 0],
-              [1, 0, 0],
-              [1, 0, 0],
-              [0, 1, 0],
-              [0, 1, 0],
-              [0, 1, 0],
-              [0, 1, 0],
-              [0, 0, 1],
-              [0, 0, 1],
-              [0, 0, 1],
-              [0, 0, 1]])
+X = mv.center(mv.multi_rand(S, 180))
+X += np.array([1.750, 1.928, 1.978, 2.322, 2.178, 2.489, 2.294, 2.222])
 
-B = np.array([[False, False, False],
-              [True,  False, False],
-              [True,  True, False]])
-LA = pd.DataFrame(L, index=data.columns, columns=['ind60', 'dem60', 'dem65'])
-BE = pd.DataFrame(B, index=LA.columns, columns=LA.columns)
-S = data.cov()
-Zg = ZR = data
+data = X
 
+Lambda = pd.DataFrame(np.eye(8), index=data.columns, columns=data.columns)
+Lambda = Lambda.iloc[[1, 2, 3, 5, 6, 7, 0, 4], [1, 2, 3, 5, 6, 7, 0, 4]]
 
-Lambda=LA!=0
-Beta=BE!=0 
-Lambda, Beta = pd.DataFrame(Lambda), pd.DataFrame(Beta)
-Lambda.columns = ['ind60', 'dem60', 'dem65']
-Lambda.index = Zg.columns
-Beta.columns = Lambda.columns
-Beta.index = Lambda.columns
+Beta = pd.DataFrame([[0, 0, 0, 0, 0, 0, 1, 1],
+                     [1, 0, 0, 1, 0, 0, 0, 0],
+                     [0, 1, 0, 0, 1, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 1, 1],
+                     [1, 0, 0, 1, 0, 0, 0, 0],
+                     [0, 1, 0, 0, 1, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0],
+                     ], index=Lambda.columns, columns=Lambda.columns)
+PH   = pd.DataFrame([[1.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0],
+                     [0.0, 1.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0],
+                     [0.0, 0.0, 1.0, 0.0, 0.0, 0.1, 0.0, 0.0],
+                     [0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                     [0.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                     [0.0, 0.0, 0.1, 0.0, 0.0, 1.0, 0.0, 0.0],
+                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.1],
+                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 1.0],
+                     ], index=Lambda.columns, columns=Lambda.columns)
 
-Theta = pd.DataFrame(np.eye(Lambda.shape[0]),
-                     index=Lambda.index, columns=Lambda.index)
-Theta.loc['y1', 'y5'] = 0.05
-Theta.loc['y2', 'y4'] = 0.05
-Theta.loc['y2', 'y6'] = 0.05
-Theta.loc['y3', 'y7'] = 0.05
-Theta.loc['y4', 'y8'] = 0.05
-Theta.loc['y6', 'y8'] = 0.05
+TH = Lambda.copy()*0.0
+data = data.loc[:, Lambda.index]
+mod = mv.MLSEM(data, Lambda, Beta, PH=PH, TH=TH.values)
+mod.fit()
 
-Theta.loc['y5', 'y1'] = 0.05
-Theta.loc['y4', 'y2'] = 0.05
-Theta.loc['y6', 'y2'] = 0.05
-Theta.loc['y7', 'y3'] = 0.05
-Theta.loc['y8', 'y4'] = 0.05
-Theta.loc['y8', 'y6'] = 0.05
-
-
-sem_mod = SEM(Zg, Lambda, Beta, Theta.values)
-sem_mod.fit(xtol=1e-500, gtol=1e-500, maxiter=2000)
-sem_mod.res
 

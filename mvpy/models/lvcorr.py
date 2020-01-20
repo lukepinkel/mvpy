@@ -173,7 +173,59 @@ def mixed_corr(data, var_types=None):
        
 
 class Polychoric:
+    """
+    Class that computes the MLE of a polychoric correlation
     
+    Attributes
+    ----------
+    a : array
+        Estimates of the thresholds for the first variable
+        
+        
+    b : array
+        Estimates of the threshold for the second variable
+    
+    ixi1 : array
+        Indices used to construct a1
+    
+    ixi2 : array
+        Indices used to construct a2
+    
+    ixj1 : array
+        Indices used to construct b1
+    
+    ixj2 : array
+        Indices used to construct b2
+    
+    a1 : array
+        Index of the (i-1)th threshold for i in the number of categories in x
+        and for j in the number of categories in y
+    
+    a2 : array
+        Index of the i-th threshold for i in the number of categories in x
+        and for j in the number of categories in y
+    
+    b1 : array
+        Index of the (j-1)th threshold for i in the number of categories in x
+        and for j in the number of categories in y    
+     
+    b2 : array
+        Index of the j-th threshold for i in the number of categories in x
+        and for j in the number of categories in y   
+    
+    x : array
+        Ordinal variable
+    
+    y : array
+        Ordinal variable
+    
+    p : int
+        Number of categories in x
+        
+    q : int
+        Number of categories in y
+        
+    """
     def __init__(self, x=None, y=None, df=None):
         if (x is None) and (y is None):
             df = linalg_utils._check_np(df)
@@ -208,6 +260,15 @@ class Polychoric:
         self.x, self.p, self.y, self.q = x, p, y, q
     
     def prob(self, r):
+        """
+        Calculates P(n_{ij})
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         p = statfunc_utils.binorm_cdf(self.a1, self.b1, r) \
             - statfunc_utils.binorm_cdf(self.a2, self.b1, r)\
             - statfunc_utils.binorm_cdf(self.a1, self.b2, r)\
@@ -215,6 +276,15 @@ class Polychoric:
         return p
     
     def dprob(self, r):
+        """
+        Calculates the derivative of P(n_{ij}) with respect to r
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         p = statfunc_utils.binorm_pdf(self.a1, self.b1, r) \
             - statfunc_utils.binorm_pdf(self.a2, self.b1, r)\
             - statfunc_utils.binorm_pdf(self.a1, self.b2, r)\
@@ -222,6 +292,15 @@ class Polychoric:
         return p
     
     def _dphi(self, a, b, r):
+        """
+        Calculates the derivative of p(n_{ij}) with respect to r
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         xy, x2, y2 = a * b, a**2, b**2
         r2 = r**2
         s = (1 - r2)
@@ -238,6 +317,15 @@ class Polychoric:
         return g
      
     def gfunc(self, r):
+        """
+        Calculates the derivative of p(n_{ij}) with respect to r for all ij
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         g = self._dphi(self.a1, self.b1, r)\
             -self._dphi(self.a2, self.b1, r)\
             -self._dphi(self.a1, self.b2, r)\
@@ -245,6 +333,15 @@ class Polychoric:
         return g
   
     def loglike(self, r):
+        """
+        Calculates negative log likelihood
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         p = self.prob(r)
         p = np.maximum(p, 1e-16)
         return -np.sum(self.vecx * np.log(p))
@@ -296,7 +393,37 @@ def dcrep(arr, dic):
 
 
 class Polyserial:
+    """
+    Class that computes the MLE of a polyserial correlation
     
+    Attributes
+    ----------
+    
+    order : dict
+        Dictionary specifying the order of the ordinal variable
+        
+    marginal_counts : array
+        The marginal counts of the ordinal variable
+        
+    tau_arr : array
+        Array of the estimated thresholds used to make the latent variable
+        assumed to underly the ordinal variable, ordinal
+        
+    y_ordered : array
+        Version of y converted into order integers
+        
+    tau1 : array
+        Upper threshold
+        
+    tau2 : array
+        Lower threshold
+    
+    x : array
+        Continuous variable
+        
+    y : array
+        Ordinal variable
+    """
     def __init__(self, x=None, y=None, df=None):
         if (x is None) and (y is None):
             df = linalg_utils._check_np(df)
@@ -329,6 +456,15 @@ class Polyserial:
        
         
     def prob(self, r):
+        """
+        Calculates P(x|y)
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+        
+        """
         tau1, tau2 = self.tau1, self.tau2
         th1 = statfunc_utils.polyex(self.x, tau1, r)
         th2 = statfunc_utils.polyex(self.x, tau2, r)
@@ -336,10 +472,37 @@ class Polyserial:
         return p
     
     def loglike(self, r):
+        """
+        Returns the (negative) log likelihood
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+             
+        Returns
+        -------
+        ll : float
+            The log likelihood
+        """
         ll = -np.sum(np.log(self.prob(r)))
         return ll
     
     def gradient(self, r):
+        """
+        Returns the derivative of the (negative) log likelihood with respect
+        to the correlation
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+             
+        Returns
+        -------
+        g : float
+            The derivative of the negative log likelihood
+        """
         tau1, tau2, x = self.tau1, self.tau2, self.x
         th1 = statfunc_utils.polyex(self.x, tau1, r)
         th2 = statfunc_utils.polyex(self.x, tau2, r)
@@ -359,6 +522,22 @@ class Polyserial:
         return g.sum()
     
     def hessian(self, r):
+        """
+        Returns an approximation of the second derivative of the (negative) 
+        log likelihood with respectto the correlation.  Too lazy to 
+        do the math at the moment, but a correct analytical derivative will
+        be implemented in the future
+        
+        Parameters
+        ----------
+        r : float
+             Correlation
+             
+        Returns
+        -------
+        H : float
+            second derivative of the (negative) log likelihood
+        """
         H = sp.optimize.approx_fprime(np.atleast_1d(r), 
                                       self.gradient, 
                                       np.finfo(1.0).eps**(1/3))
@@ -366,6 +545,14 @@ class Polyserial:
     
     
     def fit(self, verbose=0):
+        """
+        Fits the model
+        
+        Parameters
+        ----------
+        verbose : int
+             The verbosity of the otpimizer
+        """
         bounds =[(-1.0+1e-16, 1.0-1e-16)]
         x0 = np.atleast_1d(np.corrcoef(self.x, self.y)[0, 1])
         opt = sp.optimize.minimize(self.loglike, x0, jac=self.gradient,

@@ -1,42 +1,101 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Sun Sep 29 19:41:33 2019
+Created on Thu Jan 16 09:53:45 2020
 
 @author: lukepinkel
 """
 
-import numpy as np
-import pandas as pd
 import mvpy.api as mv
+import pandas as pd
+import numpy as np
 
-import importlib
-importlib.reload(mv)
-pd.set_option('display.expand_frame_repr', False)
-vechS = [2.926, 1.390, 1.698, 1.628, 1.240, 0.592, 0.929,
-         0.659, 4.257, 2.781, 2.437, 0.789, 1.890, 1.278, 0.949,
-         4.536, 2.979, 0.903, 1.419, 1.900, 1.731, 5.605, 1.278, 1.004,
-         1.000, 2.420, 3.208, 1.706, 1.567, 0.988, 3.994, 1.654, 1.170,
-         3.583, 1.146, 3.649]
+data = pd.read_csv("/users/lukepinkel/Downloads/bollen.csv", index_col=0)
+data = data[['x1', 'x2', 'x3', 'y1', 'y2', 'y3', 'y4', 'y5',
+             'y6', 'y7', 'y8', ]]
+L = np.array([[1, 0, 0],
+              [1, 0, 0],
+              [1, 0, 0],
+              [0, 1, 0],
+              [0, 1, 0],
+              [0, 1, 0],
+              [0, 1, 0],
+              [0, 0, 1],
+              [0, 0, 1],
+              [0, 0, 1],
+              [0, 0, 1]])
+B = np.array([[False, False, False],
+              [True,  False, False],
+              [True,  True, False]])
+LA = pd.DataFrame(L, index=data.columns, columns=['ind60', 'dem60', 'dem65'])
+BE = pd.DataFrame(B, index=LA.columns, columns=LA.columns)
+S = data.cov()
+Zg = ZR = data
+Lambda=LA!=0
+Beta=BE!=0 
+Lambda, Beta = pd.DataFrame(Lambda), pd.DataFrame(Beta)
+Lambda.columns = ['ind60', 'dem60', 'dem65']
+Lambda.index = Zg.columns
+Beta.columns = Lambda.columns
+Beta.index = Lambda.columns
+Theta = pd.DataFrame(np.eye(Lambda.shape[0]),
+                     index=Lambda.index, columns=Lambda.index)
+Theta.loc['y1', 'y5'] = 0.05
+Theta.loc['y2', 'y4'] = 0.05
+Theta.loc['y2', 'y6'] = 0.05
+Theta.loc['y3', 'y7'] = 0.05
+Theta.loc['y4', 'y8'] = 0.05
+Theta.loc['y6', 'y8'] = 0.05
+Theta.loc['y5', 'y1'] = 0.05
+Theta.loc['y4', 'y2'] = 0.05
+Theta.loc['y6', 'y2'] = 0.05
+Theta.loc['y7', 'y3'] = 0.05
+Theta.loc['y8', 'y4'] = 0.05
+Theta.loc['y8', 'y6'] = 0.05
+  
+mod = mv.MLSEM(Zg, Lambda, 
+               Beta, Theta.values, 
+               fit_func='ML', wmat='normal')
+mod.fit()
 
-S = pd.DataFrame(mv.invech(np.array(vechS)), columns=['anti1', 'anti2',
-                 'anti3', 'anti4', 'dep1', 'dep2', 'dep3', 'dep4'])
-S.index = S.columns
 
-X = mv.center(mv.multi_rand(S))
-X += np.array([1.750, 1.928, 1.978, 2.322, 2.178, 2.489, 2.294, 2.222])
+comp = pd.DataFrame(np.hstack([mv.vechc(mod.hessian(mod.free)),
+                               mv.vechc(mv.fprime(mod.gradient, mod.free))]))
 
-data = X[['anti1', 'anti2', 'anti3', 'anti4']]
 
-Lambda = pd.DataFrame(np.eye(4), index=data.columns, columns=data.columns)
-Beta = pd.DataFrame([[0, 0, 0, 0],
-                     [1, 0, 0, 0],
-                     [0, 1, 0, 0],
-                     [0, 0, 1, 0]], index=data.columns, columns=data.columns)
-PH = Lambda.copy()
-TH = Lambda.copy()*0.0
+H = mod.hessian(mod.free)
+H = pd.DataFrame(H, index=mod.res.index, columns=mod.res.index)
 
-sem_model = mv.SEM(data, Lambda, Beta, PH=PH.values, TH=TH.values)
-sem_model.fit()
-data = X.copy()
+
+
+Phi = np.diag(np.random.uniform(low=0.5, high=2.0, size=(4)))
+Beta = np.array([[0, 0.0, 0, 0],
+                 [1, 0.0, 0, 0],
+                 [0, -1., 0, 0],
+                 [0, 0.0, 1, 0]])
+Lambda = np.zeros((12, 4))
+Lambda[0:3, 0] = 1
+Lambda[3:6, 1] = 1
+Lambda[6:9, 2] = 1
+Lambda[9:12, 3] = 1
+Theta = np.diag(np.random.uniform(low=0.5, high=2.0, size=(12)))
+
+Lvars = mv.center(mv.multi_rand(Phi))
+Lvars = Lvars.dot(np.linalg.inv(mv.mat_rconj(Beta)))
+Xi = mv.center(mv.multi_rand(Theta))
+Z = Lvars.dot(Lambda.T) + Xi
+Z = pd.DataFrame(Z, columns=['x%i'%i for i in range(1, 13)])
+Beta = pd.DataFrame(Beta, index=['v%i'%i for i in range(1, 5)])
+Beta.columns = Beta.index
+Lambda = pd.DataFrame(Lambda, index=Z.columns, columns=Beta.index)
+Theta = pd.DataFrame(Theta, index=Z.columns, columns=Z.columns)
+Phi = pd.DataFrame(Phi, index=Beta.index, columns=Beta.columns)
+B = np.linalg.inv(mv.mat_rconj(Beta))
+S = Lambda.dot(B).dot(Phi.values).dot(B.T).dot(Lambda.T.values)+Theta.values
+S.columns = S.index
+Beta.iloc[2, 1] = 1.0
+#Transposition required to get from the generative to the hypothesis matrix
+sem_mod = mv.MLSEM(Z, Lambda, Beta.T, Theta, Phi)
+sem_mod.fit()
+
 
