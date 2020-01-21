@@ -687,6 +687,86 @@ class Hampel:
 
 
 
+class Laplace:
+    
+    def __init__(self):
+        self.a = 1.0
+     
+    def rho_func(self, u):
+        rho = np.abs(u)
+        return rho
+
+    def psi_func(self, u):
+        psi = np.sign(u)
+        return psi
+
+    def phi_func(self, u):
+        phi = np.ones_like(u)
+        return phi
+
+    def weights(self, u):
+        w = self.psi_func(u) / u
+        return w
+    
+    
+    
+class Lpnorm:
+    
+    def __init__(self, p=1.5):
+        self.p = p
+        self.a = p - 1.0
+        self.b = p / 2.0
+        self.c = self.a * self.b
+        self.d = p - 2.0
+     
+    def rho_func(self, u):
+        rho = 0.5 * np.abs(u)**self.p
+        return rho
+
+    def psi_func(self, u):
+        psi = self.b * np.abs(u)**self.a
+        psi*= np.sign(u)
+        return psi
+
+    def phi_func(self, u):
+        phi = -np.abs(u)**self.d * self.c * np.sign(u)
+        return phi
+
+    def weights(self, u):
+        w = self.psi_func(u) / u
+        return w
+    
+    
+    
+    
+class Cauchy:
+    
+    def __init__(self, p=1.5):
+        self.p = p
+        self.a = p - 1.0
+        self.b = p / 2.0
+        self.c = self.a * self.b
+        self.d = p - 2.0
+     
+    def rho_func(self, u):
+        rho = np.log(1 + u**2)
+        return rho
+
+    def psi_func(self, u):
+        psi = 2 * u / (1 + u**2)
+        return psi
+
+    def phi_func(self, u):
+        u2 = u**2
+        phi = 2 * (u2 - 1) / (u2 + 1)**2
+        return phi
+
+    def weights(self, u):
+        w = self.psi_func(u) / u
+        return w
+    
+
+
 
 
 
