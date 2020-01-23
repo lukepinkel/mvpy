@@ -466,6 +466,7 @@ def multivar_marginal_kurtosis(X):
     return k
 
 
+
 def cov_sample_cov(X=None, S=None, excess_kurt=None, kurt=None):
     if S is None:
         m = np.mean(X, axis=0)
@@ -505,11 +506,18 @@ def trimmed_mean(x, alpha=10):
     x = trim_extremes(x, alpha=alpha)
     return np.mean(x)
 
+
+def MedScale(r):
+    s = np.median(np.abs(r - np.median(r))) / sp.stats.norm.ppf(.75)
+    return s
+    
+
 class Huber:
     
-    def __init__(self):
+    def __init__(self, scale_estimator=MedScale):
         self.c0 = 1.345
         self.c1 = 0.6745
+        self._scale_estimator = MedScale
         
     def rho_func(self, u):
         '''
@@ -553,12 +561,16 @@ class Huber:
         v[ixa] = 1
         v[ixb] = self.c0 / np.abs(u[ixb])
         return v
+    
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)
         
 class Bisquare:
     
-    def __init__(self):
+    def __init__(self, scale_estimator=MedScale):
         self.c0 = 4.685
         self.c1 = 0.6745
+        self._scale_estimator = scale_estimator
     
     def rho_func(self, u):
         '''
@@ -608,16 +620,20 @@ class Bisquare:
         v[ixa] = (1 - (u[ixa] / c)**2)**2
         v[ixb] = 0
         return v
+     
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)
         
 class Hampel:
     
-    def __init__(self, k=0.9016085):
+    def __init__(self, k=0.9016085, scale_estimator=MedScale):
         self.a = 1.5 * k
         self.b = 3.5 * k
         self.r = 8.0 * k
         self.k = k
         self.c = self.a / 2.0 * (self.b - self.a + self.r)
         self.a2 = self.a**2
+        self._scale_estimator = scale_estimator
     
     def rho_func(self, u):
         '''
@@ -681,7 +697,9 @@ class Hampel:
         v[ixb] = a / au[ixb]
         v[ixc] = a * (r - au[ixc]) / (au[ixc] * (r - b))
         return v
-            
+      
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)
     
 
 
@@ -689,8 +707,9 @@ class Hampel:
 
 class Laplace:
     
-    def __init__(self):
+    def __init__(self, scale_estimator=MedScale):
         self.a = 1.0
+        self._scale_estimator = scale_estimator
      
     def rho_func(self, u):
         rho = np.abs(u)
@@ -707,17 +726,21 @@ class Laplace:
     def weights(self, u):
         w = self.psi_func(u) / u
         return w
+       
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)   
     
     
     
 class Lpnorm:
     
-    def __init__(self, p=1.5):
+    def __init__(self, p=1.5, scale_estimator=MedScale):
         self.p = p
         self.a = p - 1.0
         self.b = p / 2.0
         self.c = self.a * self.b
         self.d = p - 2.0
+        self._scale_estimator = scale_estimator
      
     def rho_func(self, u):
         rho = 0.5 * np.abs(u)**self.p
@@ -735,18 +758,21 @@ class Lpnorm:
     def weights(self, u):
         w = self.psi_func(u) / u
         return w
-    
+          
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)
     
     
     
 class Cauchy:
     
-    def __init__(self, p=1.5):
+    def __init__(self, p=1.5, scale_estimator=MedScale):
         self.p = p
         self.a = p - 1.0
         self.b = p / 2.0
         self.c = self.a * self.b
         self.d = p - 2.0
+        self._scale_estimator = scale_estimator
      
     def rho_func(self, u):
         rho = np.log(1 + u**2)
@@ -764,7 +790,9 @@ class Cauchy:
     def weights(self, u):
         w = self.psi_func(u) / u
         return w
-    
+          
+    def estimate_scale(self, r):
+        return self._scale_estimator(r)
 
 
 
@@ -791,6 +819,7 @@ def _m_est_loc(Y, n_iters=100, tol=1e-9, method=Huber()):
             break
         b0 = beta
     return beta
+
 
 
 

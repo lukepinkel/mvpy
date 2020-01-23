@@ -442,8 +442,8 @@ class RLS:
         self.n_obs, self.p = self.X.shape
     
     def scale(self, r):
-        s = np.median(np.abs(r - np.median(r))) / sp.stats.norm.ppf(.75)
-        return s
+        return self.f.estimate_scale(r)
+
     
     def _correction_factor(self, r):
         tmp = self.f.phi_func(r).mean()
