@@ -17,7 +17,7 @@ from scipy.special import erf, erfinv
 from scipy.stats import chi2 as chi2_dist
 from scipy.optimize import minimize #analysis:ignore
 from .base_utils import corr, check_type, valid_overlap #analysis:ignore
-from .linalg_utils import _check_1d, _check_np, dmat, vechc
+from .linalg_utils import _check_1d, _check_np, dmat, vechc, normdiff
 
 def norm_pdf(x, mu=0, s=1):
     '''
@@ -769,6 +769,28 @@ class Cauchy:
 
 
 
+
+
+def _m_est_loc(Y, n_iters=100, tol=1e-9, method=Huber()):
+    X = np.ones((Y.shape[0], 1))
+    w = np.ones((Y.shape[0], 1))
+    b0 = np.zeros(1)
+    for i in range(n_iters):
+        if w.ndim==1:
+            w = w.reshape(w.shape[0], 1)
+        Xw = X * w
+        XtWX_inv = np.linalg.pinv(np.dot(Xw.T, X))
+        beta = XtWX_inv.dot(np.dot(Xw.T, Y))
+        r = _check_1d(Y) - _check_1d(X.dot(beta))
+        s = np.median(np.abs(r - np.median(r))) / sp.stats.norm.ppf(.75)
+        u = r / s
+        w = method.weights(u)
+        
+        db = normdiff(beta, b0)
+        if db < tol:
+            break
+        b0 = beta
+    return beta
 
 
 
