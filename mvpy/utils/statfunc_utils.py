@@ -507,9 +507,10 @@ def trimmed_mean(x, alpha=10):
     return np.mean(x)
 
 
-def MedScale(r):
+def MedScale(r, *args):
     s = np.median(np.abs(r - np.median(r))) / sp.stats.norm.ppf(.75)
     return s
+
     
 
 class Huber:
@@ -562,8 +563,8 @@ class Huber:
         v[ixb] = self.c0 / np.abs(u[ixb])
         return v
     
-    def estimate_scale(self, r):
-        return self._scale_estimator(r)
+    def estimate_scale(self, r, *args):
+        return self._scale_estimator(r, *args)
         
 class Bisquare:
     
@@ -621,8 +622,8 @@ class Bisquare:
         v[ixb] = 0
         return v
      
-    def estimate_scale(self, r):
-        return self._scale_estimator(r)
+    def estimate_scale(self, r, *args):
+        return self._scale_estimator(r, *args)
         
 class Hampel:
     
@@ -698,8 +699,8 @@ class Hampel:
         v[ixc] = a * (r - au[ixc]) / (au[ixc] * (r - b))
         return v
       
-    def estimate_scale(self, r):
-        return self._scale_estimator(r)
+    def estimate_scale(self, r, *args):
+        return self._scale_estimator(r, *args)
     
 
 
@@ -759,8 +760,8 @@ class Lpnorm:
         w = self.psi_func(u) / u
         return w
           
-    def estimate_scale(self, r):
-        return self._scale_estimator(r)
+    def estimate_scale(self, r, *args):
+        return self._scale_estimator(r, *args)
     
     
     
@@ -791,8 +792,8 @@ class Cauchy:
         w = self.psi_func(u) / u
         return w
           
-    def estimate_scale(self, r):
-        return self._scale_estimator(r)
+    def estimate_scale(self, r, *args):
+        return self._scale_estimator(r, *args)
 
 
 
