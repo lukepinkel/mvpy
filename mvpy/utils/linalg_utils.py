@@ -387,7 +387,7 @@ def swp(g, k):
     return h
 
 
-def fprime(Func, X, *args):
+def fprime(Func, X, *args, eps=None):
     '''
     Derivative of a matrix function of a matrix using Magnus and Neudecker
     definition of a derivative as \frac{d vec(F(X))} {d vec(X)^{T}}
@@ -417,7 +417,8 @@ def fprime(Func, X, *args):
     p, q = len(x), len(y)
     J = omat(q, p)
     ei = zeros(p)
-    eps = (np.finfo(0.1).eps)**(1/3)*x+np.finfo(0.1).eps
+    if eps is None:
+        eps = (np.finfo(0.1).eps)**(1/3)*x+np.finfo(0.1).eps
     for i in range(p):
         ei[i] = eps[i]/2.0
         if X.ndim==1:
@@ -431,7 +432,7 @@ def fprime(Func, X, *args):
     return J
 
 
-def fprime_cs(Func, X, *args):
+def fprime_cs(Func, X, *args, eps=None):
     '''
     Derivative of a matrix function of a matrix using Magnus and Neudecker
     definition of a derivative as \frac{d vec(F(X))} {d vec(X)^{T}}
@@ -461,7 +462,8 @@ def fprime_cs(Func, X, *args):
     p, q = len(x), len(y)
     J = omat(q, p)
     ei = zeros(p).astype(complex)
-    eps = (np.finfo(0.1).eps)**(1.0/3.0)*x+np.finfo(0.1).eps
+    if eps is None:
+        eps = (np.finfo(0.1).eps)**(1.0/3.0)*x+np.finfo(0.1).eps
     for i in range(p):
         ei[i] = eps[i]*1.0j
         if X.ndim==1:
@@ -473,7 +475,7 @@ def fprime_cs(Func, X, *args):
 
     return J
 
-def hess_approx(Func, X, *args):
+def hess_approx(Func, X, *args, eps=None):
     if type(X)==float:
         def F(X, *args):
             X = np.array([X])
@@ -490,7 +492,8 @@ def hess_approx(Func, X, *args):
     p, q = len(x), len(y)
     H = omat(q*p, p*q)
     ei = zeros(p)
-    eps = (np.finfo(0.1).eps)**(1/3)*x+np.finfo(0.1).eps    
+    if eps is None:
+        eps = (np.finfo(0.1).eps)**(1/3)*x+np.finfo(0.1).eps    
     
     for i in range(p):
         ei[i] = eps[i]/2.0
