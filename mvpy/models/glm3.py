@@ -16,7 +16,7 @@ import scipy.stats# analysis:ignore
 import scipy.special# analysis:ignore
 import patsy  # analysis:ignore
 import pandas as pd # analysis:ignore
-from mvpy.utils import linalg_utils, base_utils # analysis:ignore
+from ..utils import linalg_utils, base_utils # analysis:ignore
 
 LN2PI = np.log(2.0 * np.pi)
 FOUR_SQRT2 = 4.0 * np.sqrt(2.0)
