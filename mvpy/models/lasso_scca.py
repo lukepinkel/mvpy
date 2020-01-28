@@ -9,7 +9,6 @@ Created on Mon Jan 27 23:41:52 2020
 import numpy as np # analysis:ignore
 import scipy as sp # analysis:ignore
 import pandas as pd # analysis:ignore
-import mvpy.api as mv # analysis:ignore
 import scipy.optimize as opt# analysis:ignore
 
 from ..utils import linalg_utils, base_utils # analysis:ignore
