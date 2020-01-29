@@ -69,15 +69,14 @@ def pobjfunc(w1, w2, S, c1, c2):
         
     
     
-def _sparse_cca(X1, X2, c1=None, c2=None, n_iters=50, tol=1e-9):
+def _sparse_cca(S, c1=None, c2=None, n_iters=50, tol=1e-9):
     if c1 is None:
-       c1 = np.sqrt(1 + np.sqrt(X1.shape[1]))
+       c1 = np.sqrt(1 + np.sqrt(S.shape[1]))
     if c2 is None:
-        c2 = np.sqrt(1 + np.sqrt(X1.shape[1]))
+        c2 = np.sqrt(1 + np.sqrt(S.shape[1]))
 
-    w2 = np.random.normal(0, 1, size=X2.shape[1])
+    w2 = np.random.normal(0, 1, size=S.shape[1])
     w2/=np.linalg.norm(w2)
-    S = base_utils.cov(X1, X2)
     objfunc_vals = np.zeros((n_iters))
     prev_f = -1e16
     for i in range(n_iters):
@@ -91,11 +90,10 @@ def _sparse_cca(X1, X2, c1=None, c2=None, n_iters=50, tol=1e-9):
     return w1, w2, objfunc_vals[:i]
 
 
-def sparse_cca(X1, X2, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
+def sparse_cca(S, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
     starts = {'w1':[], 'w2':[], 'fmax':[], 'nit':[], 'r':[], 'p1':[], 'p2':[]}
-    S = base_utils.cov(X1, X2)
     for i in range(n_starts):
-        w1, w2, fvals = _sparse_cca(X1, X2, c1, c2, n_iters, tol)
+        w1, w2, fvals = _sparse_cca(S, c1, c2, n_iters, tol)
         starts['w1'].append(w1)
         starts['w2'].append(w2)
         starts['fmax'].append(fvals[-1])
@@ -105,7 +103,47 @@ def sparse_cca(X1, X2, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
         starts['p2'].append(np.sum(np.abs(w2)))  
     return starts
 
+class PCCA:
+    
+    def __init__(self, X=None, Y=None, S=None, ncomps=1):
+        if (X is not None) and (Y is not None) and (S is None):
+            S = X.T.dot(Y)
+        self.X, self.Y, self.ncomps = X, Y, ncomps
+        self.S, self.cols1, self.cols2, self.is_pd = base_utils.check_type(S) 
+        
+    def _fit(self, S, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9,
+             return_full=False):
+        starts_dict = sparse_cca(self.S, c1, c2, n_starts,  n_iters, tol)
+        starts_dfram = pd.DataFrame([starts_dict[x] for x in 
+                                     ['fmax', 'nit', 'r', 'p1', 'p2']]).T
 
+        wx = starts_dict['w1'][starts_dfram[0].idxmax()]
+        wy = starts_dict['w2'][starts_dfram[0].idxmax()]
+        
+        if return_full:
+            return wx, wy, starts_dfram
+        else:
+            return wx, wy, starts_dfram[0].max()
+           
+            
+    def fit(self, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
+        S = self.S.copy()
+        Wx = np.zeros((S.shape[0], self.ncomps))
+        Wy = np.zeros((S.shape[1], self.ncomps))
+        
+        for i in range(self.ncomps):
+            wx, wy, f= self._fit_comp(S, c1, c2, n_starts, n_iters, tol)
+            Wx[:, i] = wx
+            Wy[:, i] = wy
+            S = S - (wx[: ,None].T.dot(S).dot(wy[:, None])) * (np.outer(wx, wy))
+        self.Wx = Wx
+        self.Wy = Wy
+            
+        
+        
+        
+    
+            
 
 """   
 
