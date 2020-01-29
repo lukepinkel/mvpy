@@ -107,13 +107,13 @@ class PCCA:
     
     def __init__(self, X=None, Y=None, S=None, ncomps=1):
         if (X is not None) and (Y is not None) and (S is None):
-            S = X.T.dot(Y)
+            S = base_utils.corr(X, Y)
         self.X, self.Y, self.ncomps = X, Y, ncomps
         self.S, self.cols1, self.cols2, self.is_pd = base_utils.check_type(S) 
         
     def _fit(self, S, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9,
              return_full=False):
-        starts_dict = sparse_cca(self.S, c1, c2, n_starts,  n_iters, tol)
+        starts_dict = sparse_cca(S, c1, c2, n_starts,  n_iters, tol)
         starts_dfram = pd.DataFrame([starts_dict[x] for x in 
                                      ['fmax', 'nit', 'r', 'p1', 'p2']]).T
 
@@ -128,20 +128,41 @@ class PCCA:
             
     def fit(self, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
         S = self.S.copy()
+        S0 = S.copy()
         Wx = np.zeros((S.shape[0], self.ncomps))
         Wy = np.zeros((S.shape[1], self.ncomps))
         
         for i in range(self.ncomps):
-            wx, wy, f= self._fit_comp(S, c1, c2, n_starts, n_iters, tol)
+            wx, wy, f= self._fit(S, c1, c2, n_starts, n_iters, tol)
             Wx[:, i] = wx
             Wy[:, i] = wy
-            S = S - (wx[: ,None].T.dot(S).dot(wy[:, None])) * (np.outer(wx, wy))
+            S = S - (wx[: ,None].T.dot(S0).dot(wy[:, None])) * (np.outer(wx, wy))
         self.Wx = Wx
         self.Wy = Wy
+        
+        if self.X is not None:
+            self.Zx = self.X.dot(Wx)
+        else:
+            self.Zx = None
+
+        if self.Y is not None:
+            self.Zy = self.Y.dot(Wy)
+        else:
+            self.Zy = None
             
-        
-        
-        
+        if self.is_pd:
+            self.Wx = pd.DataFrame(self.Wx, index=self.cols1)
+            self.Wy = pd.DataFrame(self.Wy, index=self.cols2)
+        if (self.X is not None) and (self.Y is not None):
+            #Sx, Sy = base_utils.corr(self.X), base_utils.corr(self.Y)
+            #vx = np.diag(np.sqrt(1.0 / np.diag(Wx.T.dot(Sx).dot(Wx))))
+            #vy = np.diag(np.sqrt(1.0 / np.diag(Wy.T.dot(Sy).dot(Wy))))
+            #Sxy = vx.dot(Wx.T.dot(self.S).dot(Wy)).dot(vy)
+            Sxy = base_utils.corr(self.Zx, self.Zy)
+        else:
+            Sxy = None
+        self.Sxy = Sxy
+            
     
             
 
@@ -154,24 +175,35 @@ S = np.array([[1.0, 0.0, 0.9, 0.0],
               [0.0, 0.9, 0.0, 1.0]])
     
 w = np.zeros((100, 2)) 
+v = np.zeros((100, 2)) 
+
 w[:10, 0] = 1.0
 w[10:20, 0] = -1.0
 
 w[80:90, 1] = 1.0
 w[90:, 1] = -1.0
+
+v[20:40, 0] = 1.0
+v[85:90, 1] = -1.0
+
 U = mv.multi_rand(S)
 
 
 
-X1 = sp.stats.matrix_normal(U[:, :2].dot(w.T), np.eye(U.shape[0]),
+X = sp.stats.matrix_normal(U[:, :2].dot(w.T), np.eye(U.shape[0]),
                             np.eye(w.shape[0])).rvs()
 
 
 
-X2 = sp.stats.matrix_normal(U[:, 2:].dot(w.T), np.eye(U.shape[0]),
+Y = sp.stats.matrix_normal(U[:, 2:].dot(v.T), np.eye(U.shape[0]),
                             np.eye(w.shape[0])).rvs()
 
- 
+X, Y = mv.csd(X), mv.csd(Y)
+
+pcca = PCCA(X, Y, ncomps=2)
+pcca.fit(4.5, 6.5)
+print(pcca.Sxy)
+Wx, Wy = pcca.Wx, pcca.Wy
 w1, w2, fvals = _sparse_cca(X1, X2)
     
 starts = sparse_cca(X1, X2, c1=4.5, c2=4.5, n_starts=250, n_iters=500, tol=1e-16)
