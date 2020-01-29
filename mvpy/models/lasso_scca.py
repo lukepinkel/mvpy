@@ -5,7 +5,7 @@ Created on Mon Jan 27 23:41:52 2020
 
 @author: lukepinkel
 """
-
+import time # analysis:ignore
 import numpy as np # analysis:ignore
 import scipy as sp # analysis:ignore
 import pandas as pd # analysis:ignore
@@ -103,6 +103,11 @@ def sparse_cca(S, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
         starts['p2'].append(np.sum(np.abs(w2)))  
     return starts
 
+
+
+
+
+
 class PCCA:
     
     def __init__(self, X=None, Y=None, S=None, ncomps=1):
@@ -111,7 +116,7 @@ class PCCA:
         self.X, self.Y, self.ncomps = X, Y, ncomps
         self.S, self.cols1, self.cols2, self.is_pd = base_utils.check_type(S) 
         
-    def _fit(self, S, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9,
+    def _fit_comp(self, S, c1=None, c2=None, n_starts=1, n_iters=50, tol=1e-9,
              return_full=False):
         starts_dict = sparse_cca(S, c1, c2, n_starts,  n_iters, tol)
         starts_dfram = pd.DataFrame([starts_dict[x] for x in 
@@ -124,19 +129,21 @@ class PCCA:
             return wx, wy, starts_dfram
         else:
             return wx, wy, starts_dfram[0].max()
-           
-            
-    def fit(self, c1=None, c2=None, n_starts=10, n_iters=50, tol=1e-9):
-        S = self.S.copy()
+     
+    def _fit(self, S, c1=None, c2=None, n_starts=1, n_iters=50, tol=1e-9):
         S0 = S.copy()
         Wx = np.zeros((S.shape[0], self.ncomps))
         Wy = np.zeros((S.shape[1], self.ncomps))
         
         for i in range(self.ncomps):
-            wx, wy, f= self._fit(S, c1, c2, n_starts, n_iters, tol)
+            wx, wy, f= self._fit_comp(S, c1, c2, n_starts, n_iters, tol)
             Wx[:, i] = wx
             Wy[:, i] = wy
             S = S - (wx[: ,None].T.dot(S0).dot(wy[:, None])) * (np.outer(wx, wy))
+        return Wx, Wy
+            
+    def fit(self, c1=None, c2=None, n_starts=1, n_iters=50, tol=1e-9):
+        Wx, Wy = self._fit(self.S, c1, c2, n_starts, n_iters, tol)
         self.Wx = Wx
         self.Wy = Wy
         
@@ -162,7 +169,98 @@ class PCCA:
         else:
             Sxy = None
         self.Sxy = Sxy
+        
+        
+    def _cv_eval(self, Sxy):
+        k = np.trace(Sxy)-np.trace(np.abs(np.flip(Sxy, axis=1)))
+        return k
+    
+    def _cvfit(self, index, c1, c2, n_starts=1, n_iters=100, tol=1e-9):
+        Xf, Yf = self.X[~index], self.Y[~index]
+        Xt, Yt = self.X[index], self.Y[index]
+        S = base_utils.corr(Xf, Yf)
+        Wx, Wy = self._fit(S, c1, c2, n_starts, n_iters, tol)
+        Zx, Zy = Xt.dot(Wx), Yt.dot(Wy)
+        Sxy = base_utils.corr(Zx, Zy)
+        return self._cv_eval(Sxy)
+    
+    def cross_validate(self, c1_vals=None, c2_vals=None, k_splits=7, vocal=True):
+        
+        if c1_vals is None:
+            c1_vals = np.arange(0.2, 5)
             
+        if c2_vals is None:
+            c2_vals = np.arange(0.2, 5)
+        
+        c1grid, c2grid = np.meshgrid(c1_vals, c2_vals)            
+        n = self.X.shape[0]
+        n_per = np.round(n / k_splits)
+        tmp = np.arange(0, n, n_per)
+        tmp = np.concatenate([tmp, np.atleast_1d(n)])
+        bounds = [(int(tmp[i]), int(tmp[i+1])) for i in range(k_splits)]
+        indices = np.zeros((n, k_splits)).astype(bool)
+        for i in range(k_splits):
+            a, b = bounds[i]
+            indices[a:b, i] = True
+        cvres = []
+        cols = ['c1', 'c2']+['r%i'%i for i in range(1, k_splits+1)]
+        grid = list(zip(c1grid.flatten(), c2grid.flatten()))
+        count, ngr, durations = 0, len(grid), []
+        sub_count = 0
+        for c1i, c2i in grid:
+            start = time.time()
+            cvresi = [c1i, c2i]
+            for i in range(k_splits):
+                r = self._cvfit(indices[:, i], c1i, c2i)
+                cvresi.append(r)
+            
+            cvres.append(cvresi)
+            end = time.time()
+            duration = end - start
+            durations.append(duration)
+            count+=1
+            sub_count+=1
+            if sub_count==100:
+                sub_count = 1
+                if vocal:
+                    print("%i/%i - %4.3f"%(count, ngr, np.mean(durations)*(ngr-count)))
+        
+        cvres = pd.DataFrame(cvres, columns=cols)
+        cvres['mean'] = cvres.iloc[:, 2:].mean(axis=1)
+        cvres['sd'] = cvres.iloc[:, 2:].std(axis=1)
+        idxmax = cvres['mean'].idxmax()
+        c1max, c2max = cvres.loc[idxmax, 'c1'], cvres.loc[idxmax, 'c2']
+        self.c1max, self.c2max = c1max, c2max
+        self.cvres = cvres
+        self.durations = durations
+        
+    def permutation_test(self, c1, c2, n_samples=1000, vocal=True, n_starts=1,
+                         n_iters=100, tol=1e-9):
+        Xc, Yc = self.X.copy(), self.Y.copy()
+        nc = self.ncomps
+        k = int(nc * (nc + 1) / 2)
+        rho_samples = np.zeros((n_samples, k))
+        wx_samples =  np.zeros((n_samples, nc*Xc.shape[1]))
+        wy_samples =  np.zeros((n_samples, nc*Yc.shape[1]))
+
+        for i in range(n_samples):
+            np.random.shuffle(Xc)
+            np.random.shuffle(Yc)
+            S = base_utils.corr(Xc, Yc)
+            Wx, Wy = self._fit(S, c1, c2, n_starts, n_iters, tol)
+            Zx, Zy = Xc .dot(Wx), Yc.dot(Wy)
+            Sxy = base_utils.corr(Zx, Zy)
+            rho_samples[i] = linalg_utils.vech(Sxy)
+            wx_samples[i] = linalg_utils.vec(Wx)
+            wy_samples[i] = linalg_utils.vec(Wy)
+            if vocal:
+                print(i)
+        self.rho_samples = rho_samples
+        self.wx_samples = wx_samples
+        self.wy_samples = wy_samples
+        
+        
+        
     
             
 
@@ -204,6 +302,84 @@ pcca = PCCA(X, Y, ncomps=2)
 pcca.fit(4.5, 6.5)
 print(pcca.Sxy)
 Wx, Wy = pcca.Wx, pcca.Wy
+Sxy = pcca.Sxy
+p, q = Sxy.shape
+n, p = pcca.X.shape
+statfunc_utils.multivariate_association_tests(np.diag(Sxy)[:1], p, q, n-p)
+statfunc_utils.multivariate_association_tests(np.diag(Sxy)[1:], p, q, n-p)
+statfunc_utils.multivariate_association_tests(np.diag(Sxy)[:, None].T, p, q, n-p)
+
+pcca = PCCA(X, Y, ncomps=2)
+pcca.cross_validate(np.linspace(6.0, 12.0, 150), np.linspace(4.0, 10.0, 150),
+                    5, vocal=True)
+cvres = pcca.cvres
+
+pcca = PCCA(X, Y, ncomps=2)
+pcca.permutation_test(8.2, 5.9)
+rho_samples = pd.DataFrame(pcca.rho_samples)
+wx_samples = pd.DataFrame(pcca.wx_samples)
+wy_samples = pd.DataFrame(pcca.wy_samples)
+pcca.fit(8.2, 5.9)
+
+wx, wy = mv.vecc(pcca.Wx), mv.vecc(pcca.Wy)
+
+res = np.block([[wx, wx_samples.std().values[:, None]],
+                [wy, wy_samples.std().values[:, None]]])
+
+res = pd.DataFrame(res, columns=['w', 'SE'])
+res['t'] = res['w']/res['SE']
+
+
+
+Xv, Yv = np.meshgrid(np.linspace(0.1, 9.0, 200), np.linspace(0.1, 9.0, 200))
+res = []
+for c1, c2 in list(zip(Xv.flatten(), Yv.flatten())):
+    pcca.fit(c1, c2, n_starts=1)
+    Sxy = pcca.Sxy
+    k = np.trace(Sxy)-np.trace(np.abs(np.flip(Sxy, axis=1)))
+    res.append([c1, c2, k])
+    print("%3.3f-%3.3f-%3.3f"%(c1, c2, k))
+
+resdf = pd.DataFrame(np.array(res))
+c1_max, c2_max = resdf[0].loc[resdf[2].idxmax()], resdf[1].loc[resdf[2].idxmax()]
+pcca.fit(c1_max, c2_max)
+
+def func(params):
+    pcca = PCCA(X, Y, ncomps=2)
+    c1, c2 = params
+    pcca.fit(c1, c2, n_starts=1)
+    Sxy = pcca.Sxy
+    k = np.trace(Sxy)
+    return k
+
+def cst(params):
+    pcca = PCCA(X, Y, ncomps=2)
+    c1, c2 = params
+    pcca.fit(c1, c2, n_starts=1)
+    Sxy = pcca.Sxy
+    return  0.05 - np.trace(np.abs(np.flip(Sxy, axis=1)))
+
+
+    
+constr = [{'type':'ineq', 'fun':cst}]
+    
+optimzer = sp.optimize.minimize(func, [0.5, 0.5], constraints=constr,
+                           bounds=[(0.01, 10), (0.01, 10)], method='slsqp')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 w1, w2, fvals = _sparse_cca(X1, X2)
     
 starts = sparse_cca(X1, X2, c1=4.5, c2=4.5, n_starts=250, n_iters=500, tol=1e-16)
