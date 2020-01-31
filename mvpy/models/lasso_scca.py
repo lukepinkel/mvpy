@@ -175,10 +175,7 @@ class PCCA:
         k = np.trace(Sxy)-np.trace(np.abs(np.flip(Sxy, axis=1)))
         return k
     
-    def _cvfit(self, index, c1, c2, n_starts=1, n_iters=100, tol=1e-9):
-        Xf, Yf = self.X[~index], self.Y[~index]
-        Xt, Yt = self.X[index], self.Y[index]
-        S = base_utils.corr(Xf, Yf)
+    def _cvfit(self, S, Xt, Yt, c1, c2, n_starts=1, n_iters=100, tol=1e-9):
         Wx, Wy = self._fit(S, c1, c2, n_starts, n_iters, tol)
         Zx, Zy = Xt.dot(Wx), Yt.dot(Wy)
         Sxy = base_utils.corr(Zx, Zy)
@@ -198,10 +195,18 @@ class PCCA:
         tmp = np.arange(0, n, n_per)
         tmp = np.concatenate([tmp, np.atleast_1d(n)])
         bounds = [(int(tmp[i]), int(tmp[i+1])) for i in range(k_splits)]
-        indices = np.zeros((n, k_splits)).astype(bool)
+        indices = np.zeros((n,)).astype(bool)
+        xval_dict = {'Xts':[], 'Yts':[], 'Ss':[]}
         for i in range(k_splits):
             a, b = bounds[i]
-            indices[a:b, i] = True
+            indices[a:b] = True
+            Xf, Yf = self.X[~indices], self.Y[~indices]
+            Xt, Yt = self.X[indices], self.Y[indices]
+            S = base_utils.corr(Xf, Yf)
+            xval_dict['Xts'].append(Xt)
+            xval_dict['Yts'].append(Yt)
+            xval_dict['Ss'].append(S)
+            indices[a:b] = False
         cvres = []
         cols = ['c1', 'c2']+['r%i'%i for i in range(1, k_splits+1)]
         grid = list(zip(c1grid.flatten(), c2grid.flatten()))
@@ -211,7 +216,9 @@ class PCCA:
             start = time.time()
             cvresi = [c1i, c2i]
             for i in range(k_splits):
-                r = self._cvfit(indices[:, i], c1i, c2i)
+                r = self._cvfit(xval_dict['Ss'][i],
+                                xval_dict['Xts'][i], 
+                                xval_dict['Yts'][i], c1i, c2i)
                 cvresi.append(r)
             
             cvres.append(cvresi)
@@ -221,7 +228,7 @@ class PCCA:
             count+=1
             sub_count+=1
             if sub_count==100:
-                sub_count = 1
+                sub_count = 0
                 if vocal:
                     print("%i/%i - %4.3f"%(count, ngr, np.mean(durations)*(ngr-count)))
         
@@ -261,6 +268,7 @@ class PCCA:
         
         
         
+    
     
             
 
