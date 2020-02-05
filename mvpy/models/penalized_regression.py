@@ -11,6 +11,7 @@ import scipy as sp # analysis:ignore
 import pandas as pd # analysis:ignore
 from ..utils import linalg_utils, base_utils # analysis:ignore
 from .glm3 import Binomial
+
 def sft(x, t):
     y = np.maximum(np.abs(x) - t, 0) * np.sign(x)
     return y
@@ -46,6 +47,7 @@ def penalized_loglike(beta, X, y, lambda_=0.1, alpha=0.5):
     pll = ssr + penalty_term(beta, lambda_, alpha)
     return pll
     
+
 def eln_coordinate_descent(X, y, lambda_=0.1, alpha=0.5, n_iters=20, tol=1e-9):
     X, y = base_utils.csd(X), base_utils.csd(y)
     G, Xty = X.T.dot(X),  X.T.dot(y)
@@ -54,7 +56,7 @@ def eln_coordinate_descent(X, y, lambda_=0.1, alpha=0.5, n_iters=20, tol=1e-9):
     active = np.ones(p).astype(bool)
     la, dn = lambda_ * alpha, lambda_ * (1  - alpha) + 1.0
     loglikes, llprev = [], penalized_loglike(beta, X, y, lambda_, alpha)
-    
+    beta_paths = np.zeros(p)
     for i in range(n_iters):
         for j in range(p):
             active[j] = False
@@ -65,17 +67,17 @@ def eln_coordinate_descent(X, y, lambda_=0.1, alpha=0.5, n_iters=20, tol=1e-9):
             active[j] = True
             
             loglikes.append((penalized_loglike(beta, X, y, lambda_, alpha)))
-            
+        beta_paths = np.vstack([beta_paths, beta])        
         llcurr = penalized_loglike(beta, X, y, lambda_, alpha)
         
         if np.abs(llprev - llcurr)<tol:
             break
-        
+        if llcurr>llprev:
+            break
         llprev = llcurr
         
-    return beta, loglikes
+    return beta, beta_paths, loglikes
     
-   
  
 def reorder_gram(G, ix, Cov, Cmax_j, m):
     q = Cmax_j + m
