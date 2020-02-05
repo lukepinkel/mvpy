@@ -7,6 +7,7 @@ Created on Wed Sep 11 18:14:10 2019
 """
 
 import numpy as np
+import scipy as sp
 import pandas as pd
 from numpy import sqrt, ones, eye, zeros, dot, diag, kron
 from numpy.linalg import (multi_dot, eig, eigh, svd, inv, pinv, cholesky, det, 
@@ -1083,5 +1084,18 @@ def fastls(X, y):
     
 
 
+def add_chol_row(xnew, xold, L=None):
+    xtx = xnew
+    norm_xnew = np.sqrt(xtx)
+    if L is None:
+        L = np.atleast_2d(norm_xnew)
+        return L
+    else:
+        Xtx = xold
+        r = sp.linalg.solve(L, Xtx)
+        rpp = np.sqrt(xtx - np.sum(r**2))
+        A = np.block([[L, np.zeros((L.shape[0], 1))],
+                       [r, np.atleast_1d(rpp)]])
+        return A
 
 

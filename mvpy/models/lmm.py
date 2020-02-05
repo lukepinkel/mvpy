@@ -305,20 +305,21 @@ class LMM(object):
         LL = logdetR+logdetC + logdetG + yPy
         return LL
 
-    def fit(self, optimizer_kwargs={}, maxiter=100, verbose=2, hess_opt=False):
+    def fit(self, optimizer_kwargs={}, optimizer_options=None,
+            maxiter=100, verbose=2, hess_opt=False):
+        if optimizer_options is None:
+            optimizer_options = {'verbose': verbose, 'maxiter': maxiter}
         if hess_opt is False:
             res = sp.optimize.minimize(self.loglike, self.theta,
                                        bounds=self.bounds,
-                                       options={'verbose': verbose,
-                                                'maxiter': maxiter},
+                                       options=optimizer_options,
                                        method='trust-constr',
                                        jac=self.gradient,
                                        **optimizer_kwargs)
         else:
             res = sp.optimize.minimize(self.loglike, self.theta,
                                        bounds=self.bounds,
-                                       options={'verbose': verbose,
-                                                'maxiter': maxiter},
+                                       options=optimizer_options,
                                        method='trust-constr',
                                        jac=self.gradient,
                                        hess=self.hessian,

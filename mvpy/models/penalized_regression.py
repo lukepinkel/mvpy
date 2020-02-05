@@ -75,7 +75,66 @@ def eln_coordinate_descent(X, y, lambda_=0.1, alpha=0.5, n_iters=20, tol=1e-9):
         
     return beta, loglikes
     
-    
+   
+ 
+def reorder_gram(G, ix, Cov, Cmax_j, m):
+    q = Cmax_j + m
+    Cov[[Cmax_j, 0]] = Cov[[0, Cmax_j]]
+    ix[q], ix[m] = ix[m], ix[q]
+    G[[m, q]] = G[[q, m]]
+    G[:, [m, q]] = G[:, [q, m]]
+    Cov = Cov[1:]
+    return G, Cov, ix
+        
+
+  
+def get_gamma(Cabsmax, Cov, A, aj):
+    if len(Cov)>0:
+        Cabsmax = np.atleast_1d(Cabsmax)
+        A = np.atleast_1d(A)
+        gamprops = np.concatenate([(Cabsmax - Cov) / (A - aj),
+                                   (Cabsmax + Cov) / (A + aj),
+                                   Cabsmax / A])
+        gamprops = gamprops[gamprops>0]
+    else:
+        gamprops = Cabsmax / A
+    gamhat = np.min(gamprops)
+    return gamhat
+
+
+def cho_backsolve(A, b):
+    return np.linalg.inv(A.dot(A.T)).dot(b)
+
+def lars(X, y):
+    n, p = X.shape
+    Cov, Gram = X.T.dot(y), X.T.dot(X)
+    L, betas = Gram.copy(), np.zeros((p, p))
+    active_set, ix = [], np.arange(p)
+    signs = np.zeros(p)
+    for i in range(p):
+        Cabs = np.abs(Cov)
+        Cmax_j = np.argmax(Cabs)
+        Cmax, Cabsmax = Cov[Cmax_j], Cabs[Cmax_j]
+
+        signs[i] = np.sign(Cmax)
+        Gram, Cov, ix = reorder_gram(Gram, ix, Cov, Cmax_j, i)
+        L = linalg_utils.add_chol_row(Gram[i, i], Gram[i, :i], L[:i, :i])
+        active_set.append(ix[i])
+        j, k = i-1, i+1
+        sign_i = signs[:k]
+        w = cho_backsolve(L[:k, :k], sign_i)
+        A = np.sqrt(1.0 / np.sum(w * sign_i))
+        w *= A
+        aj = np.dot(Gram[:k, k:].T, w)
+        gamhat = get_gamma(Cabsmax, Cov, A, aj)
+        betas[i, active_set] = betas[j, active_set] + gamhat * w
+
+        Cov -= gamhat * aj
+    return active_set, betas
+
+
+
+ 
 
 def penalized_glm_cd(X, y, f=None, lambda_=0.1, alpha=0.5, n_iters=20,
                      tol=1e-4, vocal=False):
