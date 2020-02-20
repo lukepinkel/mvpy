@@ -1002,8 +1002,8 @@ def replace_diagonal(X, h):
     Returns:
         Xh: X with diagonals replaced by h
     '''
-    Xh = X - diag2(X) + diag(h)
-    return Xh
+    X[np.diag_indices(X.shape[0])] = h
+    return X
 
 
 
