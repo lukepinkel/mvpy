@@ -6,8 +6,9 @@ Created on Wed Sep 11 18:15:38 2019
 @author: lukepinkel
 """
 
-import pandas as pd
 import numpy as np
+import scipy as sp
+import pandas as pd
 from .base_utils import check_type
         
 def dummy_encode(X, colnames=None, complete=False):
@@ -38,3 +39,25 @@ def dummy_encode(X, colnames=None, complete=False):
             cats = cats
         dummy_vars = pd.DataFrame(dummy_vars, columns=cats, index=ix)
     return dummy_vars
+
+
+
+
+def xcorr_fftc(x, y, normalization="coef", retlags=True):
+    n = x.shape[0]
+    rho = np.zeros(2*n-1)
+    r = sp.signal.fftconvolve(x, y[::-1], mode='full')[n-1:]
+    rho[n-1:] = r
+    rho[:n-1] = r[1:][::-1]
+    lags = np.arange(1-n, n)
+    if normalization=='unbiased':
+        c = 1.0 / (n - np.abs(lags))
+    elif normalization=='biased':
+        c = 1.0 / n
+    elif normalization=='coef':
+        c = 1.0 / np.sqrt(np.dot(x, x)*np.dot(y, y))
+    rho*=c
+    if retlags:
+        return lags, rho
+    else:
+        return rho

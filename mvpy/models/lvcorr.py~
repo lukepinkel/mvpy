@@ -247,7 +247,7 @@ class Polychoric:
         vecx = linalg_utils.vec(xtab)
         a, b = statfunc_utils.polychor_thresh(xtab)
         
-        ixi, ixj = np.meshgrid(np.arange(1, q+1), np.arange(1, p+1))
+        ixi, ixj = np.meshgrid(np.arange(1, p+1), np.arange(1, q+1))
         ixi1, ixj1 = ixi.flatten(), ixj.flatten()
         ixi2, ixj2 = ixi1 - 1, ixj1 - 1
         
