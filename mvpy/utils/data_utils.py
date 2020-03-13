@@ -43,7 +43,7 @@ def dummy_encode(X, colnames=None, complete=False):
 
 
 
-def xcorr_fftc(x, y, normalization="coef", retlags=True):
+def xcorr(x, y, normalization="coef", retlags=True):
     n = x.shape[0]
     rho = np.zeros(2*n-1)
     r = sp.signal.fftconvolve(x, y[::-1], mode='full')[n-1:]
