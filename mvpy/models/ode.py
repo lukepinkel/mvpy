@@ -8,13 +8,8 @@ Created on Sun Mar 15 20:17:57 2020
 import autograd # analysis:ignore
 import scipy as sp # analysis:ignore
 import pandas as pd  # analysis:ignore
-import mvpy.api as mv  # analysis:ignore
-import seaborn as sns # analysis:ignore
 import matplotlib as mpl  # analysis:ignore
-import statsmodels.api as sm # analysis:ignore
-import matplotlib.pyplot as plt # analysis:ignore
 import autograd.numpy as np # analysis:ignore
-from matplotlib.animation import FuncAnimation # analysis:ignore
 
 
         
