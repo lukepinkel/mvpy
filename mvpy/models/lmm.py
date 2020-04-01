@@ -5,6 +5,7 @@ Created on Wed Sep 11 20:03:34 2019
 
 @author: lukepinkel
 """
+import re
 import patsy
 import collections
 import numpy as np
@@ -465,3 +466,51 @@ class LMM(object):
                     H.append(Hij[0])
         H = linalg_utils.invech(np.array(H))
         return H
+    
+
+
+def replace_duplicate_operators(match):
+    return match.group()[-1:]
+
+def parse_random_effects(formula):
+    matches = re.findall("\([^)]+[|][^)]+\)", formula)
+    groups = [re.search("\(([^)]+)\|([^)]+)\)", x).groups() for x in matches]
+    frm = formula
+    for x in matches:
+        frm = frm.replace(x, "")
+    fe_form = re.sub("(\+|\-)(\+|\-)+", replace_duplicate_operators, frm)
+    return fe_form, groups
+
+def construct_random_effects(groups, data, n_vars):
+    re_vars, re_groupings = list(zip(*groups))
+    re_vars, re_groupings = set(re_vars), set(re_groupings)
+    Zdict = dict(zip(re_vars, [patsy.dmatrix(x, data=data, return_type='dataframe') for x in re_vars]))
+    Jdict = dict(zip(re_groupings, [data_utils.dummy_encode(data[x], complete=True) for x in re_groupings]))
+    
+    Z = []
+    for x, y in groups:
+        Zi = linalg_utils.khatri_rao(Jdict[y].T, Zdict[x].T).T
+        if n_vars>1:
+            # This should be changed to kron(Zi, eye)
+            Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
+            Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
+            Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
+        Z.append(Zi)
+    Z = np.concatenate(Z, axis=1)
+    return Z
+
+def construct_model_matrices(formula, data):
+    fe_form, groups = parse_random_effects(formula)
+    yvars, fe_form = re.split("[~]", fe_form)
+    yvars = re.split(",", re.sub("\(|\)", "", yvars))
+    yvars = [x.strip() for x in yvars]
+    n_vars = len(yvars)
+    Z = construct_random_effects(groups, data, n_vars)
+    X = patsy.dmatrix(fe_form, data=data, return_type='dataframe')
+    if n_vars>1:
+        y = linalg_utils.vecc(data[yvars].values.T)
+        X = np.kron(X, np.eye(n_vars))
+    else:
+        y = data[yvars]
+
+    return X, Z, y
