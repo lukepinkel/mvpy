@@ -74,20 +74,9 @@ class LMM(object):
 
         Parameters
         ----------
-        fixed_effects: str
-            String formula containing the column names corresponding to the
-            fixed effect terms. This is to be evaluated by patsy
-
-        random_effects: dict
-            Dictionary whose keys correspond to factors, and whose values are
-            formulas specifying the random effect terms.  The keys are evaluated
-            as categorical and dummy encoded.
-
-        y: str or list
-            If y is a string, then a univariate linear mixed model is fit, but if
-            y is a list of m strings, then an m-variate linear mixed model is
-            fit. It is assumed that all fixed and random effects are identical
-            for all dependent variables.
+        formula: str
+            Formula with using the R style of denoting random effects, 
+            e.g., y~x+(1+z|id)
 
         data: DataFrame
             Pandas DataFrame containing n_obs by n_features including the
@@ -134,7 +123,7 @@ class LMM(object):
                                 return_type='dataframe')
             # stratify re variable by dummy columns
             Zi = linalg_utils.khatri_rao(Ji.T, Zij.T).T
-            if type(yvar) is list:
+            if n_vars>1:
                 # This should be changed to kron(Zi, eye)
                 Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
                 Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
@@ -185,12 +174,11 @@ class LMM(object):
         else:  
             res_names += ['error_var']
             
-        if type(yvar) is str:
-            y = data[[yvar]]
-        
         # Vectorize equations - Add flexibility for dependent variable specific
         # design matrices
-        elif type(yvar) is list:
+        if n_vars==1:
+            y = data[yvar]
+        else:
             y = linalg_utils.vecc(data[yvar].values.T)
             X = np.kron(X, np.eye(n_vars))
 
@@ -265,7 +253,7 @@ class LMM(object):
         self.XZ = np.block([X, Z])
         self.A = np.block([[X, Z], [np.zeros((Z.shape[1], X.shape[1])),
                            np.eye(Z.shape[1])]])
-        self._is_multivar = type(yvar)==list
+        self._is_multivar = n_vars>1
 
     def params2mats(self, theta=None):
         '''
