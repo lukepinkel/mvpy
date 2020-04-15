@@ -16,11 +16,59 @@ import scipy.sparse as sps
 
 from ..utils import linalg_utils, data_utils
 
+def replace_duplicate_operators(match):
+    return match.group()[-1:]
+
+def parse_random_effects(formula):
+    matches = re.findall("\([^)]+[|][^)]+\)", formula)
+    groups = [re.search("\(([^)]+)\|([^)]+)\)", x).groups() for x in matches]
+    frm = formula
+    for x in matches:
+        frm = frm.replace(x, "")
+    fe_form = re.sub("(\+|\-)(\+|\-)+", replace_duplicate_operators, frm)
+    return fe_form, groups
+
+def construct_random_effects(groups, data, n_vars):
+    re_vars, re_groupings = list(zip(*groups))
+    re_vars, re_groupings = set(re_vars), set(re_groupings)
+    Zdict = dict(zip(re_vars, [patsy.dmatrix(x, data=data, return_type='dataframe') for x in re_vars]))
+    Jdict = dict(zip(re_groupings, [data_utils.dummy_encode(data[x], complete=True) for x in re_groupings]))
+    dim_dict = {}
+    Z = []
+    for x, y in groups:
+        dim_dict[y] = {'nvars':Jdict[y].shape[1], 'n_groups':Zdict[x].shape[1]}
+        Zi = linalg_utils.khatri_rao(Jdict[y].T, Zdict[x].T).T
+        if n_vars>1:
+            # This should be changed to kron(Zi, eye)
+            Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
+            Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
+            Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
+        Z.append(Zi)
+    Z = np.concatenate(Z, axis=1)
+    return Z, dim_dict
+
+def construct_model_matrices(formula, data):
+    fe_form, groups = parse_random_effects(formula)
+    yvars, fe_form = re.split("[~]", fe_form)
+    fe_form = re.sub("\+$", "", fe_form)
+    yvars = re.split(",", re.sub("\(|\)", "", yvars))
+    yvars = [x.strip() for x in yvars]
+    n_vars = len(yvars)
+    Z, dim_dict = construct_random_effects(groups, data, n_vars)
+    X = patsy.dmatrix(fe_form, data=data, return_type='dataframe')
+    if n_vars>1:
+        y = linalg_utils.vecc(data[yvars].values.T)
+        X = np.kron(X, np.eye(n_vars))
+    else:
+        y = data[yvars]
+
+    return X, Z, y, dim_dict
+
+
 
 class LMM(object):
 
-    def __init__(self, fixed_effects, random_effects, yvar, data,
-                 error_structure=None, acov=None):
+    def __init__(self, formula, data, error_structure=None, acov=None):
         '''
         Linear Mixed Model
 
@@ -57,7 +105,13 @@ class LMM(object):
             among observational units (row covariance)
 
         '''
-
+        fe_form, random_effects = parse_random_effects(formula)
+        fe_form = re.sub("\+$", "", fe_form)
+        random_effects = dict(random_effects)
+        random_effects = {value:key for key, value in random_effects.items()}
+        yvars, fixed_effects = re.split("[~]", fe_form)
+        yvars = re.split(",", re.sub("\(|\)", "", yvars))
+        yvar = [x.strip() for x in yvars]
         n_obs = data.shape[0]
         X = patsy.dmatrix(fixed_effects, data=data, return_type='dataframe')
         fixed_effects = X.columns
@@ -454,63 +508,20 @@ class LMM(object):
         # P = W - np.linalg.multi_dot([XtW.T, XtWX_inv, XtW])
         Py = P.dot(y)
         H = []
-        for i, Ji in enumerate(jac_mats):
-            for j, Jj in enumerate(jac_mats):
-                if j >= i:
-                    PJi = sps.coo_matrix.dot(Ji.T, P).T
-                    PJj = sps.coo_matrix.dot(Jj.T, P).T
-                    yPJi = sps.coo_matrix.dot(Ji.T, Py).T
-                    JjPy = Jj.dot(Py)
-                    Hij = -(PJi.dot(PJj)).diagonal().sum()\
+        #TODO Shit, just pre compute PJi and iterate over instead of current redundant matmuls
+        PJ, yPJ = [], []
+        for i, J in enumerate(jac_mats):
+            PJ.append((J.T.dot(P)).T)
+            yPJ.append((J.T.dot(Py)).T)
+        indices = np.triu_indices(len(jac_mats)) 
+        for i, j in list(zip(*indices)):
+            PJi, PJj = PJ[i], PJ[j]
+            yPJi, JjPy = yPJ[i], yPJ[j].T
+            Hij = -(PJi.dot(PJj)).diagonal().sum()\
                         + (2 * (yPJi.dot(P)).dot(JjPy))[0]
-                    H.append(Hij[0])
+            H.append(Hij[0])
         H = linalg_utils.invech(np.array(H))
         return H
     
 
 
-def replace_duplicate_operators(match):
-    return match.group()[-1:]
-
-def parse_random_effects(formula):
-    matches = re.findall("\([^)]+[|][^)]+\)", formula)
-    groups = [re.search("\(([^)]+)\|([^)]+)\)", x).groups() for x in matches]
-    frm = formula
-    for x in matches:
-        frm = frm.replace(x, "")
-    fe_form = re.sub("(\+|\-)(\+|\-)+", replace_duplicate_operators, frm)
-    return fe_form, groups
-
-def construct_random_effects(groups, data, n_vars):
-    re_vars, re_groupings = list(zip(*groups))
-    re_vars, re_groupings = set(re_vars), set(re_groupings)
-    Zdict = dict(zip(re_vars, [patsy.dmatrix(x, data=data, return_type='dataframe') for x in re_vars]))
-    Jdict = dict(zip(re_groupings, [data_utils.dummy_encode(data[x], complete=True) for x in re_groupings]))
-    
-    Z = []
-    for x, y in groups:
-        Zi = linalg_utils.khatri_rao(Jdict[y].T, Zdict[x].T).T
-        if n_vars>1:
-            # This should be changed to kron(Zi, eye)
-            Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
-            Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
-            Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
-        Z.append(Zi)
-    Z = np.concatenate(Z, axis=1)
-    return Z
-
-def construct_model_matrices(formula, data):
-    fe_form, groups = parse_random_effects(formula)
-    yvars, fe_form = re.split("[~]", fe_form)
-    yvars = re.split(",", re.sub("\(|\)", "", yvars))
-    yvars = [x.strip() for x in yvars]
-    n_vars = len(yvars)
-    Z = construct_random_effects(groups, data, n_vars)
-    X = patsy.dmatrix(fe_form, data=data, return_type='dataframe')
-    if n_vars>1:
-        y = linalg_utils.vecc(data[yvars].values.T)
-        X = np.kron(X, np.eye(n_vars))
-    else:
-        y = data[yvars]
-
-    return X, Z, y
