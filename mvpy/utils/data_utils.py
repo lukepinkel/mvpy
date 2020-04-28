@@ -61,3 +61,30 @@ def xcorr(x, y, normalization="coef", retlags=True):
         return lags, rho
     else:
         return rho
+    
+    
+
+def autocov(x, unbiased=False, circular=False):
+    n = len(x)
+    x -= np.mean(x, axis=0)
+    x_padded = np.concatenate((x, np.zeros(n)))
+    f = np.fft.fft(x_padded)
+    r = np.fft.ifft(f * np.conj(f)).real
+    rho = np.concatenate([r[n+1:], r[:n]]) 
+    if unbiased:
+        rho = rho / np.concatenate([np.arange(1, n), np.arange(n, 0, -1)])
+    else:
+        rho = rho / n
+    
+    if circular is False:
+        rho = rho[n-1:]
+    return rho
+    
+def autocorr(x, unbiased=False, circular=False):
+    s = autocov(x, unbiased, circular)
+    if circular:
+        s /= s[len(x)]
+    else:
+        s /= s[0]
+    return s
+    

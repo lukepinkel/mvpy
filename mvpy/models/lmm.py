@@ -96,8 +96,7 @@ class LMM(object):
         '''
         fe_form, random_effects = parse_random_effects(formula)
         fe_form = re.sub("\+$", "", fe_form)
-        random_effects = dict(random_effects)
-        random_effects = {value:key for key, value in random_effects.items()}
+        random_effects = dict([(y, x) for x, y in random_effects])
         yvars, fixed_effects = re.split("[~]", fe_form)
         yvars = re.split(",", re.sub("\(|\)", "", yvars))
         yvar = [x.strip() for x in yvars]
