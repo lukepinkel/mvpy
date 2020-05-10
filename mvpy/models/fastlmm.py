@@ -1,32 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Mon Apr 27 15:34:24 2020
+Created on Sat May  9 16:42:06 2020
 
 @author: lukepinkel
 """
 
-
 import re # analysis:ignore
 import jax # analysis:ignore
-import time# analysis:ignore
 import patsy # analysis:ignore
 import timeit# analysis:ignore
 import numba # analysis:ignore
 import numpy as np # analysis:ignore
 import scipy as sp # analysis:ignore
 import pandas as pd # analysis:ignore
-import seaborn as sns # analysis:ignore
 import mvpy.api as mv # analysis:ignore
-import matplotlib as mpl # analysis:ignore
-import statsmodels.api as sm  # analysis:ignore
-import matplotlib.pyplot as plt # analysis:ignore
 import jax.numpy as jnp  # analysis:ignore
-from mvpy.utils import linalg_utils, data_utils  # analysis:ignore
-import _psparse as psparse # analysis:ignore
-import mvpy.models.lmm as mvlm # analysis:ignore
 import scipy.sparse as sps # analysis:ignore
 
+def _check_np(x):
+    if type(x) is not np.ndarray:
+        x = x.values
+    return x
 
 def dmat(n):
     p = int(n * (n + 1) / 2)
@@ -350,6 +345,61 @@ def onion_corr(d, betaparams=10):
 
 
 
+def _check_shape(x, ndims=1):
+    order = None
+    
+    if x.flags['C_CONTIGUOUS']:
+        order = 'C'
+    
+    elif x.flags['F_CONTIGUOUS']:
+        order = 'F'
+    
+    if x.ndim>ndims:
+        x = x.reshape(x.shape[:-1], order=order)
+    elif x.ndim<ndims:
+        x = np.expand_dims(x, axis=-1)
+    
+    return x
+
+@numba.jit
+def _check_shape_nb(x, ndims=1):
+    if x.ndim>ndims:
+        y = x.reshape(x.shape[:-1])
+    elif x.ndim<ndims:
+        y = np.expand_dims(x, axis=-1)
+    elif x.ndim==ndims:
+        y = x
+    return y
+
+def dummy(x, fullrank=True, categories=None):
+    x = _check_shape(x)
+    if categories is None:
+        categories = np.unique(x)
+    p = len(categories)
+    n = x.shape[0]
+    if fullrank is False:
+        p = p - 1
+    Y = np.zeros((n, p), dtype=np.float32)
+    for i in range(p):
+        Y[x==categories[i], i] = 1.0
+    return Y
+
+
+
+@numba.jit
+def dummy_nb(x, fullrank=True, categories=None):
+    x = _check_shape_nb(x)
+    if categories is None:
+        categories = np.unique(x)
+    p = len(categories)
+    if fullrank is False:
+        p = p - 1
+    n = x.shape[0]
+    Y = np.zeros((n, p))
+    for i in range(p):
+        Y[x==categories[i], i] = 1.0
+    return Y
+
 
 def replace_duplicate_operators(match):
     return match.group()[-1:]
@@ -366,18 +416,13 @@ def parse_random_effects(formula):
 def construct_random_effects(groups, data, n_vars):
     re_vars, re_groupings = list(zip(*groups))
     re_vars, re_groupings = set(re_vars), set(re_groupings)
-    Zdict = dict(zip(re_vars, [patsy.dmatrix(x, data=data, return_type='dataframe') for x in re_vars]))
-    Jdict = dict(zip(re_groupings, [data_utils.dummy_encode(data[x], complete=True) for x in re_groupings]))
+    Zdict = dict(zip(re_vars, [_check_np(patsy.dmatrix(x, data=data, return_type='dataframe')) for x in re_vars]))
+    Jdict = dict(zip(re_groupings, [dummy_nb(data[x]) for x in re_groupings]))
     dim_dict = {}
     Z = []
     for x, y in groups:
         dim_dict[y] = {'n_groups':Jdict[y].shape[1], 'n_vars':Zdict[x].shape[1]}
-        Zi = linalg_utils.khatri_rao(Jdict[y].T, Zdict[x].T).T
-        if n_vars>1:
-            # This should be changed to kron(Zi, eye)
-            Kl = linalg_utils.kmat(Zi.shape[0], n_vars)
-            Kr = linalg_utils.kmat(n_vars, Zi.shape[1])
-            Zi = Kl.dot(np.kron(np.eye(n_vars), Zi)).dot(Kr)
+        Zi = khatri_rao(Jdict[y].T, Zdict[x].T).T
         Z.append(Zi)
     Z = np.concatenate(Z, axis=1)
     return Z, dim_dict
@@ -391,12 +436,7 @@ def construct_model_matrices(formula, data):
     n_vars = len(yvars)
     Z, dim_dict = construct_random_effects(groups, data, n_vars)
     X = patsy.dmatrix(fe_form, data=data, return_type='dataframe')
-    if n_vars>1:
-        y = linalg_utils.vecc(data[yvars].values.T)
-        X = np.kron(X, np.eye(n_vars))
-    else:
-        y = data[yvars]
-
+    y = data[yvars]
     return X, Z, y, dim_dict
 
 def vech2vec(vh):
@@ -485,7 +525,7 @@ def get_derivmats(Zs, dims):
         nv, ng =  value['n_vars'], value['n_groups']
         Sv_shape = nv, nv
         Av_shape = ng, ng
-        Kv = linalg_utils.kronvec_mat(Av_shape, Sv_shape, sparse=True)
+        Kv = kronvec_mat(Av_shape, Sv_shape)
         Ip = sps.csc_matrix(sps.eye(np.product(Sv_shape)))
         vecAv = sps.csc_matrix(sps.eye(ng)).reshape((-1, 1), order='F')
         D = sps.csc_matrix(Kv.dot(sps.kron(vecAv, Ip)))
@@ -494,10 +534,40 @@ def get_derivmats(Zs, dims):
                 ZoZ = sps.kron(Zi, Zi)
                 D = sps.csc_matrix(ZoZ.dot(D))
                 start+=ng*nv
-        tmp = sps.csc_matrix(linalg_utils.dmat(int(np.sqrt(D.shape[1]))))
+        sqrd = int(np.sqrt(D.shape[1]))
+        tmp = sps.csc_matrix(dmat_nb(sqrd))
         deriv_mats[key] = D.dot(tmp)
     return deriv_mats
-       
+  
+def lsq_estimate(dims, theta, indices, X, XZ, y):
+    b, _, _, _, _, _, _, _, _, _ = (sps.linalg.lsqr(XZ, y))
+    u_hat = b[X.shape[1]:]
+    i = 0
+    for key, value in dims.items():
+        if key!='error':
+            ng, nv = value['n_groups'], value['n_vars']
+            n_u = ng * nv
+            ui = u_hat[i:i+n_u].reshape(ng, nv)
+            theta[indices[key]] = vech(np.atleast_2d(np.cov(ui, rowvar=False)))
+            i+=n_u
+    r =  _check_shape(y) - _check_shape(XZ.dot(b))
+    theta[-1] = np.dot(r.T, r) / len(r)
+    return theta
+        
+def get_jacmats(deriv_mats):
+    jac_mats = {}
+    for key, value in deriv_mats.items():
+        jmi = []
+        for i in range(value.shape[1]):
+            n2 = value.shape[0]
+            n = int(np.sqrt(n2))
+            jmi.append(value[:, i].reshape(n, n))
+        jac_mats[key] = jmi
+    return jac_mats
+            
+            
+        
+        
 
 
 class LME:
@@ -518,12 +588,13 @@ class LME:
         Ginv =  sps.block_diag(list(Gmats_inverse.values())).tocsc()
         Zs = sps.csc_matrix(Z)
         Ip = sps.eye(Zs.shape[0])
+        self.bounds = [(None, None) if int(x)==0 else (0, None) for x in theta]
         self.G = G
         self.Ginv = Ginv
         self.g_indices = g_indices
-        self.X = linalg_utils._check_2d(linalg_utils._check_np(X))
+        self.X = _check_shape_nb(_check_np(X), 2)
         self.Z = Z
-        self.y = linalg_utils._check_2d(linalg_utils._check_np(y))
+        self.y = _check_shape_nb(_check_np(y), 2)
         self.XZ = XZ
         self.C = C
         self.Xty = Xty
@@ -533,11 +604,14 @@ class LME:
         self.indices = indices
         self.formula = formula
         self.data = data
-        self.theta = theta
+        self.theta = lsq_estimate(dims, theta, indices, X, XZ, self.y)
         self.Zs = Zs
         self.Ip = Ip
         self.deriv_mats = get_derivmats(Zs, dims)
         self.yty = y.T.dot(y)
+        self.jac_mats = get_jacmats(self.deriv_mats)
+        self.t_indices = list(zip(*np.triu_indices(len(theta))))
+    
     
     def _params_to_model(self, theta):
         G = update_gmat(theta, self.G.copy(), self.dims, self.indices, self.g_indices)
@@ -547,7 +621,7 @@ class LME:
         Rinv = self.Ip / s 
         V = self.Zs.dot(G).dot(self.Zs.T) + R
         Vinv = sparse_woodbury_inversion(self.Zs, Cinv=Ginv, Ainv=Rinv.tocsc())
-        W = psparse.pmultiply(Vinv, np.asfortranarray(self.X))
+        W = Vinv.A.dot(self.X)
         return G, Ginv, R, Rinv, V, Vinv, W, s
     
     def loglike(self, theta):
@@ -581,16 +655,125 @@ class LME:
             g = self.deriv_mats[key].T.dot(vecP)-self.deriv_mats[key].T.dot(PyPy)
             grad.append(g)
         grad = np.concatenate(grad)
+        grad = _check_shape(np.array(grad))
         return grad
+    
+    def hessian(self, theta):
+        dims = self.dims
+        G, Ginv, R, Rinv, V, Vinv, W, s = self._params_to_model(theta)
+        XtW = W.T.dot(self.X)
+        XtW_inv = np.linalg.inv(XtW)
+        P = Vinv - np.linalg.multi_dot([W, XtW_inv, W.T])
+        Py = P.dot(self.y)
+        H = []
+        PJ, yPJ = [], []
+        for key in dims.keys():
+            J_list = self.jac_mats[key]
+            for i in range(len(J_list)):
+                Ji = J_list[i].T
+                PJ.append((Ji.dot(P)).T)
+                yPJ.append((Ji.dot(Py)).T)
+        t_indices = self.t_indices
+        for i, j in t_indices:
+            PJi, PJj = PJ[i], PJ[j]
+            yPJi, JjPy = yPJ[i], yPJ[j].T
+            Hij = -(PJi.dot(PJj)).diagonal().sum()\
+                        + (2 * (yPJi.dot(P)).dot(JjPy))[0]
+            H.append(np.array(Hij[0]))
+        H = invech(np.concatenate(H)[:, 0])
+        return H
+    
+    def _optimize_theta(self, optimizer_kwargs={}, hess=None):
+        if 'method' not in optimizer_kwargs.keys():
+            optimizer_kwargs['method'] = 'trust-constr'
+        if 'options' not in optimizer_kwargs.keys():
+            optimizer_kwargs['options']=dict(gtol=1e-6, xtol=1e-6, verbose=3)
+        optimizer = sp.optimize.minimize(self.loglike, self.theta, hess=hess,
+                                         bounds=self.bounds, jac=self.gradient, 
+                                         **optimizer_kwargs)
+        theta = optimizer.x
+        return optimizer, theta
+    
+    def _acov(self, theta=None):
+        if theta is None:
+            theta = self.theta
+        H_theta = self.hessian(theta)
+        Hinv_theta = np.linalg.inv(H_theta)
+        SE_theta = np.sqrt(np.diag(Hinv_theta))
+        return H_theta, Hinv_theta, SE_theta
+    
+    def _compute_effects(self, theta=None):
+        G, Ginv, R, Rinv, V, Vinv, WX, s = self._params_to_model(theta)
+        XtW = WX.T
+        XtWX = XtW.dot(self.X)
+        XtWX_inv = np.linalg.inv(XtWX)
+        beta = _check_shape(XtWX_inv.dot(XtW.dot(self.y)))
+        fixed_resids = _check_shape(self.y) - _check_shape(self.X.dot(beta))
+        
+        Zt = self.Zs.T
+        u = G.dot(Zt.dot(Vinv)).dot(fixed_resids)
+        
+        return beta, XtWX_inv, u, G, R, Rinv, V, Vinv
+    
+    def _fit(self, optimizer_kwargs={}, hess=None):
+        optimizer, theta = self._optimize_theta(optimizer_kwargs, hess)
+        self.theta = theta
+        
+        H_theta, Hinv_theta, SE_theta = self._acov(theta)
+        
+        beta, XtWX_inv, u, G, R, Rinv, V, Vinv = self._compute_effects(theta)
+        
+        self._V = V
+        self._Vinv = Vinv
+        self._G = G
+        self._R = R
+        self._Rinv = Rinv
+        self.beta = beta
+        self.u = u
+        self._SE_theta = SE_theta
+        
+        self.fixed_effects_acov = XtWX_inv
+        self.theta_acov = Hinv_theta
+        self.random_effects_acov = G
+        
+        self.yhat_f = self.X.dot(self.beta)
+        self.yhat_r = self.Z.dot(self.u)
+        self.yhat = self.yhat_f + self.yhat_r
+        
+        self.resid_f = _check_shape(self.y) - self.yhat_f
+        self.resid_r = _check_shape(self.y) - self.yhat_r
+        self.resid = _check_shape(self.y) - self.yhat
+        
+        self.sigma_f = np.dot(self.resid_f.T, self.resid_f) 
+        self.sigma_r = np.dot(self.resid_r.T, self.resid_r) 
+        self.sigma = np.dot(self.resid.T, self.resid)
+        self.sigma_y = np.var(self.y) * len(self.y)
+        
+        self.r2_f = 1 - self.sigma_f / self.sigma_y
+        self.r2_r = 1 - self.sigma_r / self.sigma_y
+        self.r2 = 1 - self.sigma / self.sigma_y
+        
+        self.params = np.concatenate([self.beta, self.theta])
+        self.se_params = np.concatenate([np.diag(np.sqrt(self.fixed_effects_acov)),
+                                         SE_theta])
+        self.params_ci_lower = self.params - 1.96 * self.se_params
+        self.params_ci_upper = self.params + 1.96 * self.se_params
+        self.params_tvalues = self.params / self.se_params
+        df = self.X.shape[0]-len(self.theta)
+        self.params_pvalues = sp.stats.t(df).sf(np.abs(self.params_tvalues))
+        
+        
+        
                 
-                
-                        
+            
+        
+        
         
 
     
     
     
-"""
+
 df = pd.DataFrame(np.kron(np.arange(200), np.ones(20)), columns=['id1'])
 df['id2'] = np.kron(np.arange(50), np.ones(80))
 df['id3'] = np.kron(np.arange(100), np.ones(40))
@@ -624,11 +807,47 @@ mod = LME("y~x1+x5-1+(1+x2|id1)+(1|id2)+(1+x3+x4|id3)", data=df)
 lmm = mv.LMM("y~x1+x5-1+(1+x2|id1)+(1|id2)+(1+x3+x4|id3)", data=df)
 
 theta = mod.theta
-theta[-1] = 5
 
-mod.loglike(theta)
-mod.gradient(theta)
-lmm.loglike(theta)
-lmm.gradient(theta)
+ll_new = mod.loglike(theta)
+ll_old = lmm.loglike(theta)
 
-"""
+np.allclose(ll_new, ll_old)
+
+g_new = mod.gradient(theta)
+g_old = lmm.gradient(theta)
+
+np.allclose(g_new, g_old)
+
+
+H_new = mod.hessian(theta)
+H_old = lmm.hessian(theta)
+
+np.allclose(H_new, H_old)
+
+
+ll_time_new = timeit.timeit("mod.loglike(theta)", globals=globals(), number=1)
+ll_time_prv = timeit.timeit("lmm.loglike(theta)", globals=globals(), number=1)
+
+gd_time_new = timeit.timeit("mod.gradient(theta)", globals=globals(), number=1)
+gd_time_prv = timeit.timeit("lmm.gradient(theta)", globals=globals(), number=1)
+
+
+hs_time_new = timeit.timeit("mod.hessian(theta)", globals=globals(), number=1)
+hs_time_prv = timeit.timeit("lmm.hessian(theta)", globals=globals(), number=1) 
+
+
+optimizer, theta  = mod._optimize_theta()
+
+mod._compute_effects(theta)
+mod._fit()
+
+res = pd.DataFrame(np.vstack([mod.params,  mod.params_ci_lower, 
+                   mod.params_ci_upper, mod.se_params, mod.params_tvalues, mod.params_pvalues]).T)
+
+res.columns = ['params', '95CI-', '95CI+', 'SE', 't', 'p']
+
+
+
+
+
+
