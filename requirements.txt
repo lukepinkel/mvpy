@@ -5,4 +5,3 @@ scipy>1.2
 patsy>=0.5.1
 jax>=0.1.62
 numba>=0.45.1
-cython>=0.29.13
